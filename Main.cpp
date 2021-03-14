@@ -1,8 +1,9 @@
 #include "imgui.h" // necessary for ImGui::*, imgui-SFML.h doesn't include imgui.h
 #include "imgui-SFML.h" // for ImGui::SFML::* functions and SFML-specific overloads
 
-#include <SFML/Graphics/CircleShape.hpp>
-#include <SFML/Graphics/RenderWindow.hpp>
+#include <SFML/Graphics.hpp>
+//#include <SFML/Graphics/CircleShape.hpp>
+//#include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/System/Clock.hpp>
 #include <SFML/Window/Event.hpp>
 
@@ -37,19 +38,36 @@
 
 
 struct Params { //under simulation???
-    
+    //getDefault
 };
 
-class Magnet { //under simulation? //==Sprite ??
-    //(static)radius - potencialne ruzne velke magnety
-    //rotace - ze spritu
+class Magnet {
+    public:
+        Magnet() = delete;
+        Magnet(const sf::Texture& texture, sf::Vector2f&& coords, float radius = 30){    //chci absolutni coords????-----------
+            shape.setRadius(radius);
+            shape.setOrigin(radius, radius);
+            shape.setPosition(std::move(coords));
+            shape.setTexture(&texture);
+            //shape.setRotation(20); //random rotation => nemuzu vytvorit ukazky, rotaci musim predat
+        }
+        sf::CircleShape GetShape() {
+            return shape;
+        }
+    private:
+        sf::CircleShape shape;
 };
 
 class Simulation {
     public:
         Params params;
-        Simulation() {
-            //vytvorit magnety
+        Simulation() = delete;
+        Simulation(sf::RenderWindow& win, const sf::Texture& texture) : window(win) {
+            Magnet m1(texture, sf::Vector2f(500,200));
+            magnets.push_back(m1);
+            
+            Magnet m2(texture, sf::Vector2f(800, 300));
+            magnets.push_back(m2);
         }
 
         void Step() {
@@ -58,13 +76,13 @@ class Simulation {
         }
 
         void Draw() {
-            //sf::CircleShape shape(100.f);
-            //shape.setFillColor(sf::Color::Green);
-
+            for (auto&& m : magnets) {
+                window.draw(m.GetShape());
+            }
         }
     private:
+        sf::RenderWindow& window;
         std::vector<Magnet> magnets;
-        //textura
 };
 
 void ShowMenu(const sf::Window& win, Params& params) {
@@ -82,9 +100,13 @@ int main() {
     sf::RenderWindow window(sf::VideoMode(fullscreen.width * winScale, fullscreen.height*winScale), "Magnet Simulation");
     window.setVerticalSyncEnabled(true);
     ImGui::SFML::Init(window);
-    
+
+    sf::Texture texture;
+    if (!texture.loadFromFile("textures/RB.png")) {
+        return -1;
+    }
     sf::Clock deltaClock;
-    Simulation sim;
+    Simulation sim(window, texture);
     while (window.isOpen()) {
         sf::Event event;
         while (window.pollEvent(event)) {
@@ -99,7 +121,7 @@ int main() {
         ShowMenu(window, sim.params);
         sim.Step();
 
-        window.clear();
+        window.clear(sf::Color::White);
         sim.Draw();
         ImGui::SFML::Render(window);
         window.display();
