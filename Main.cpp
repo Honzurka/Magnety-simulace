@@ -1,10 +1,13 @@
-#include "imgui.h"
-#include "imgui-SFML.h"
+#include "imgui.h" // necessary for ImGui::*, imgui-SFML.h doesn't include imgui.h
+#include "imgui-SFML.h" // for ImGui::SFML::* functions and SFML-specific overloads
 
+#include <SFML/Graphics/CircleShape.hpp>
 #include <SFML/Graphics/RenderWindow.hpp>
 #include <SFML/System/Clock.hpp>
 #include <SFML/Window/Event.hpp>
 
+#include <iostream> //debug
+#include <vector>
 
 /* https://eliasdaler.github.io/using-imgui-with-sfml-pt2/ */
 /*
@@ -29,50 +32,78 @@
     SFML: clear before drawing -> then display
 */
 
-#include <iostream>
-void SimulationLoop() {
-    std::cout << "Simulation is running" << std::endl;
+
+
+
+
+struct Params { //under simulation???
+    
+};
+
+class Magnet { //under simulation? //==Sprite ??
+    //(static)radius - potencialne ruzne velke magnety
+    //rotace - ze spritu
+};
+
+class Simulation {
+    public:
+        Params params;
+        Simulation() {
+            //vytvorit magnety
+        }
+
+        void Step() {
+            //pohnout s magnety-1/2n^2
+            //vyresit kolize
+        }
+
+        void Draw() {
+            //sf::CircleShape shape(100.f);
+            //shape.setFillColor(sf::Color::Green);
+
+        }
+    private:
+        std::vector<Magnet> magnets;
+        //textura
+};
+
+void ShowMenu(const sf::Window& win, Params& params) {
+    ImGui::ShowDemoWindow();
+
+    ImGui::Begin("Hello, world!");
+    ImGui::Button("Look at this pretty button");
+    ImGui::End();
 }
 
 int main() {
-    sf::RenderWindow window(sf::VideoMode(1080, 720), "MyTitle");
+    sf::VideoMode fullscreen = sf::VideoMode::getDesktopMode();
+    float winScale = 0.5;
+    
+    sf::RenderWindow window(sf::VideoMode(fullscreen.width * winScale, fullscreen.height*winScale), "Magnet Simulation");
     window.setVerticalSyncEnabled(true);
-
     ImGui::SFML::Init(window);
+    
     sf::Clock deltaClock;
-    bool isRunning = false;
+    Simulation sim;
     while (window.isOpen()) {
         sf::Event event;
         while (window.pollEvent(event)) {
-            ImGui::SFML::ProcessEvent(event); //??
+            ImGui::SFML::ProcessEvent(event);
 
             if (event.type == sf::Event::Closed) {
                 window.close();
             }
-            ImGui::SFML::Update(window, deltaClock.restart()); //??
-            /*CALLING ImGui Funcs*/
-            ImGui::ShowDemoWindow(); //check source for inspiration
-            ImGui::Begin("test window");
-            ImGui::Text("Hello world");
-            if (ImGui::Button("Start",ImVec2(100,50))) {
-                isRunning = !isRunning;
-            }
-            float f;
-            ImGui::SliderFloat("slider", &f, 100, 200);
-
-            ImGui::End();
-            /*------------------*/
-
-            if (isRunning) {    //not sure when should this calculation happen
-                SimulationLoop();
-                std::cout << "f value: " << f << std::endl;
-            }
-
-
-            window.clear(sf::Color::White);
-            ImGui::SFML::Render(window);
-            window.display();
         }
+        ImGui::SFML::Update(window, deltaClock.restart());
+
+        ShowMenu(window, sim.params);
+        sim.Step();
+
+        window.clear();
+        sim.Draw();
+        ImGui::SFML::Render(window);
+        window.display();
     }
     ImGui::SFML::Shutdown();
+    return 0;
 }
