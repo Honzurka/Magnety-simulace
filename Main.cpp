@@ -73,12 +73,14 @@ const double Math::pi = 3.14159265;
 struct Params {
     sf::Texture texture;
     float magForceCoeff;
+    float radius;
 
     Params SetDefault() {
         if (!texture.loadFromFile("textures/RB.png")) {
             throw; //should be tested
         }
         magForceCoeff = 10000;
+        radius = 30;
     }
 };
 
@@ -86,19 +88,44 @@ class Magnet {
     public:
         sf::Vector2f movement; //is init to 0??
         sf::Vector2f lastMovement;
+        float radius; //in case of different sized magnets
 
         Magnet() = delete;
-        Magnet(const sf::Texture& texture, const sf::Vector3f& loc, float radius = 30){    //chci absolutni coords????----------- //proc vec3f??
+        Magnet(const sf::Texture& texture, const sf::Vector3f& loc, float radius){    //chci absolutni coords????----------- //proc vec3f??
             shape.setRadius(radius);
             shape.setOrigin(radius, radius);
             shape.setPosition(loc.x,loc.y);
             shape.setRotation(loc.z);
             shape.setTexture(&texture);
+            this->radius = radius;
         }
         void Move() {
             shape.move(movement);   //no rotation yet...----------
+            
+            //0° | 180° -> nechci rotovat ani 1, hodnoty mezi chci rotovat k temto: (-90,+90)->0
+            /*/
+            sf::Vector2f base(1, 0);
+            sf::Vector2f dirM = Math::Rotate(base, shape.getRotation());
+            sf::Vector2f movementNorm = Math::NormalizeVec(movement);
+            double angle = Math::RadToDeg(acos(Math::DotProduct(dirM, movementNorm)));
+            std::cout << angle << std::endl;
+            double angleRot = angle * Math::VecLen(movement);
+            shape.rotate(angleRot);
+            */
+
             lastMovement = movement;
             movement = sf::Vector2f(); //hopefully zero...
+        }
+
+        //for simple collision detection
+        void MoveReverse() {
+            shape.move(-lastMovement);
+        }
+
+        bool CollidesWith(Magnet other) {
+            double distance = Math::VecLen(this->shape.getPosition() - other.GetShape().getPosition());
+            double limit = this->radius + other.radius;
+            return distance < limit;
         }
 
         sf::CircleShape GetShape() const {
@@ -119,10 +146,10 @@ class Simulation {
         Simulation() = delete; //jake ma dusledky--------------(na dtor,...)
         Simulation(sf::RenderWindow& win, const Params& params) : window(win),params(params) {
 
-            Magnet m1(params.texture, sf::Vector3f(300,200, 0));
+            Magnet m1(params.texture, sf::Vector3f(600,200, 20), params.radius);
             magnets.push_back(m1);
             
-            Magnet m2(params.texture, sf::Vector3f(900, 200, 0));
+            Magnet m2(params.texture, sf::Vector3f(900, 200, 0), params.radius);
             magnets.push_back(m2);
         }
 
@@ -135,7 +162,7 @@ class Simulation {
                 }
                 magnets[i].Move();
             }
-            //DetectColision(...)
+            SimpleCollisionDetection();
         }
 
         void Draw() {
@@ -173,6 +200,20 @@ class Simulation {
 
             return sf::Vector2f(directionNorm.x * FMagnitude, directionNorm.y * FMagnitude);
         }
+
+        void SimpleCollisionDetection() {
+            //with magnets
+            for (size_t i = 0; i < magnets.size(); ++i) {
+                for (size_t j = i + 1; j < magnets.size(); ++j) {
+                    if (magnets[i].CollidesWith(magnets[j])) {
+                        magnets[i].MoveReverse();
+                        magnets[j].MoveReverse();
+                    }
+                }
+            }
+            //with window
+
+        }
 };
 
 void ShowMenu(const sf::Window& win, Params& params) {
@@ -189,6 +230,7 @@ int main() {
     
     sf::RenderWindow window(sf::VideoMode(fullscreen.width * winScale, fullscreen.height*winScale), "Magnet Simulation");
     window.setVerticalSyncEnabled(true);
+    //window.setFramerateLimit(5); //debug
     ImGui::SFML::Init(window);
 
     Params params;
