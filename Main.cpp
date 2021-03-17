@@ -35,8 +35,13 @@
 
 using Vector2d = sf::Vector2<double>;
 
+
+
+
 class Math {
     public:
+    static const double pi;
+
     static sf::Vector2f Rotate(const sf::Vector2f& input, float angle) {
         double angleRad = DegToRad(angle);
         float x = cos(angleRad) * input.x - sin(angleRad) * input.y;
@@ -53,20 +58,74 @@ class Math {
         float vecLen = VecLen(vec);
         return sf::Vector2f(vec.x / vecLen, vec.y / vecLen);
     }
-
     static double DegToRad(double deg) {
         return deg / 180 * pi;
     }
-
     static double RadToDeg(double rad) {
         return rad / pi * 180;
     }
-
     static Vector2d GetVec(Vector2d pos1, Vector2d pos2) {
         return pos2 - pos1;
     }
+    static float GetAngleRad(const sf::Vector2f& v1, const sf::Vector2f& v2) {
+        float v1Len = VecLen(v1);
+        float v2Len = VecLen(v2);
+        float dot = DotProduct(v1, v2);
+        dot = dot / v1Len / v2Len;
+        return acos(dot);
+    }
+    static float GetAngleDeg(const sf::Vector2f& v1, const sf::Vector2f& v2) {
+        float angleRad = GetAngleRad(v1, v2);
+        return RadToDeg(angleRad);
+    }
 
-    static const double pi;
+    //returns degree between input
+    //vector(1,0) or vector(-1,0)
+    //always to the closer one
+    static float AngleFromBase(sf::Vector2f inVec, float deg) {
+        sf::Vector2f xBase(1, 0);
+        sf::Vector2f yBase(0, -1);
+
+        sf::Vector2f xDir = Math::Rotate(xBase, deg);
+        sf::Vector2f yDir = Math::Rotate(yBase, deg);
+        //std::cout << "x: " << xDir.x << " " << xDir.y << " " << "y: " << yDir.x << " " << yDir.y << " " << std::endl;
+
+        float xAngle = Math::GetAngleDeg(xDir, inVec);
+        float yAngle = Math::GetAngleDeg(yDir, inVec);
+        std::cout << "xAngle:" << xAngle << " yAngle: " << yAngle << std::endl;
+        
+        return getTrueDeg(xAngle, yAngle);
+    }
+    private:
+        //returns degree based on quadrant
+        static float getTrueDeg(float xAngle, float yAngle) {
+            if (xAngle > 90) {
+                xAngle -= 180;
+            }
+
+            if (yAngle <= 90) {
+                return -xAngle;
+            }
+            else {
+                return xAngle;
+            }
+            /*if (xAngle <= 90) {
+                if (yAngle >= 90) {
+                    return xAngle;
+                }
+                else {
+                    return 360 - xAngle;
+                }
+            }
+            else {
+                if (yAngle >= 90) {
+                    return 180 - xAngle;
+                }
+                else {
+                    return 360 - xAngle;
+                }
+            }*/
+        }
 };
 const double Math::pi = 3.14159265;
 
@@ -100,8 +159,14 @@ class Magnet {
             this->radius = radius;
         }
         void Move() {
-            shape.move(movement);   //no rotation yet...----------
+            //shape.move(movement);   //disabled for now
             
+
+            //uhel od spojnice
+            float degFromDir = Math::AngleFromBase(movement, shape.getRotation()); //realne vraci rotation deg...
+            std::cout << "degFromDir: "<< degFromDir << std::endl;
+            shape.rotate(degFromDir/10);
+
             //0° | 180° -> nechci rotovat ani 1, hodnoty mezi chci rotovat k temto: (-90,+90)->0
             /*/
             sf::Vector2f base(1, 0);
@@ -146,10 +211,10 @@ class Simulation {
         Simulation() = delete; //jake ma dusledky--------------(na dtor,...)
         Simulation(sf::RenderWindow& win, const Params& params) : window(win),params(params) {
 
-            Magnet m1(params.texture, sf::Vector3f(600,200, 20), params.radius);
+            Magnet m1(params.texture, sf::Vector3f(600,200, -45), params.radius);
             magnets.push_back(m1);
             
-            Magnet m2(params.texture, sf::Vector3f(900, 200, 0), params.radius);
+            Magnet m2(params.texture, sf::Vector3f(700, 200, 180), params.radius);
             magnets.push_back(m2);
         }
 
@@ -228,9 +293,9 @@ int main() {
     sf::VideoMode fullscreen = sf::VideoMode::getDesktopMode();
     float winScale = 0.5;
     
-    sf::RenderWindow window(sf::VideoMode(fullscreen.width * winScale, fullscreen.height*winScale), "Magnet Simulation");
-    window.setVerticalSyncEnabled(true);
-    //window.setFramerateLimit(5); //debug
+    sf::RenderWindow window(sf::VideoMode(fullscreen.width * winScale, fullscreen.height * winScale), "Magnet Simulation");
+    //window.setVerticalSyncEnabled(true);
+    window.setFramerateLimit(1); //debug
     ImGui::SFML::Init(window);
 
     Params params;
