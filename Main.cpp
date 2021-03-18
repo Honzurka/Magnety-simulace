@@ -71,6 +71,8 @@ class Math {
         float v1Len = VecLen(v1);
         float v2Len = VecLen(v2);
         float dot = DotProduct(v1, v2);
+        if (v1Len == 0 || v2Len == 0)
+            return 0; //correct???---
         dot = dot / v1Len / v2Len;
         return acos(dot);
     }
@@ -92,39 +94,31 @@ class Math {
 
         float xAngle = Math::GetAngleDeg(xDir, inVec);
         float yAngle = Math::GetAngleDeg(yDir, inVec);
+
         std::cout << "xAngle:" << xAngle << " yAngle: " << yAngle << std::endl;
-        
-        return getTrueDeg(xAngle, yAngle);
+        std::cout << "TrueAngle: " << getTrueAngle(xAngle, yAngle) << std::endl;
+
+        return getTrueAngle(xAngle, yAngle);
     }
     private:
         //returns degree based on quadrant
-        static float getTrueDeg(float xAngle, float yAngle) {
-            if (xAngle > 90) {
-                xAngle -= 180;
-            }
-
-            if (yAngle <= 90) {
-                return -xAngle;
-            }
-            else {
-                return xAngle;
-            }
-            /*if (xAngle <= 90) {
-                if (yAngle >= 90) {
+        static float getTrueAngle(float xAngle, float yAngle) {
+            if (xAngle <= 90) {
+                if (yAngle >= 90) { //270-360°
+                    return -xAngle;// 360 - xAngle;
+                }
+                else { //0-90°
                     return xAngle;
                 }
-                else {
-                    return 360 - xAngle;
-                }
             }
             else {
-                if (yAngle >= 90) {
-                    return 180 - xAngle;
+                if (yAngle >= 90) { //180-270°
+                    return -xAngle;// 360 - xAngle;
                 }
-                else {
-                    return 360 - xAngle;
+                else { //90-180°
+                    return xAngle;
                 }
-            }*/
+            }
         }
 };
 const double Math::pi = 3.14159265;
@@ -146,7 +140,10 @@ struct Params {
 class Magnet {
     public:
         sf::Vector2f movement; //is init to 0??
+        sf::Vector2f rotation;
         sf::Vector2f lastMovement;
+        sf::Vector2f lastRotation;
+
         float radius; //in case of different sized magnets
 
         Magnet() = delete;
@@ -159,25 +156,21 @@ class Magnet {
             this->radius = radius;
         }
         void Move() {
-            //shape.move(movement);   //disabled for now
+            shape.move(movement);   //disabled for now
             
 
-            //uhel od spojnice
-            float degFromDir = Math::AngleFromBase(movement, shape.getRotation()); //realne vraci rotation deg...
-            std::cout << "degFromDir: "<< degFromDir << std::endl;
-            shape.rotate(degFromDir/10);
+            const int rot = 10;
+            float degFromDir = Math::AngleFromBase(rotation, shape.getRotation());
+            if (abs(degFromDir) <= 90) {
+                shape.rotate(-degFromDir / rot);
+            }
+            else {
+                shape.rotate((180 - abs(degFromDir)) / rot);
+            }
+            
 
-            //0° | 180° -> nechci rotovat ani 1, hodnoty mezi chci rotovat k temto: (-90,+90)->0
-            /*/
-            sf::Vector2f base(1, 0);
-            sf::Vector2f dirM = Math::Rotate(base, shape.getRotation());
-            sf::Vector2f movementNorm = Math::NormalizeVec(movement);
-            double angle = Math::RadToDeg(acos(Math::DotProduct(dirM, movementNorm)));
-            std::cout << angle << std::endl;
-            double angleRot = angle * Math::VecLen(movement);
-            shape.rotate(angleRot);
-            */
-
+            lastRotation = rotation; //std::move??
+            rotation = sf::Vector2f();
             lastMovement = movement;
             movement = sf::Vector2f(); //hopefully zero...
         }
@@ -211,7 +204,7 @@ class Simulation {
         Simulation() = delete; //jake ma dusledky--------------(na dtor,...)
         Simulation(sf::RenderWindow& win, const Params& params) : window(win),params(params) {
 
-            Magnet m1(params.texture, sf::Vector3f(600,200, -45), params.radius);
+            Magnet m1(params.texture, sf::Vector3f(600,200, 20), params.radius);
             magnets.push_back(m1);
             
             Magnet m2(params.texture, sf::Vector3f(700, 200, 180), params.radius);
@@ -221,9 +214,7 @@ class Simulation {
         void Step() {
             for (size_t i = 0; i < magnets.size(); ++i) {
                 for (size_t j = i + 1; j < magnets.size(); ++j) {
-                    sf::Vector2f magForce = GetMagForce(magnets[i], magnets[j]);
-                    magnets[i].movement += magForce;
-                    magnets[j].movement -= magForce;
+                    ApplyMagForce(magnets[i], magnets[j]);
                 }
                 magnets[i].Move();
             }
@@ -240,8 +231,20 @@ class Simulation {
         std::vector<Magnet> magnets;
         const Params& params;
 
+        void ApplyMagForce(Magnet& m1, Magnet& m2) {
+            float ForceMagitude = GetForceMag(m1, m2);
+            sf::Vector2f ForceDir = Math::NormalizeVec(m2.GetShape().getPosition() - m1.GetShape().getPosition());
+            sf::Vector2f Force = ForceMagitude * ForceDir;
+            std::cout << "FM: " << ForceMagitude << std::endl;
+            m1.movement += Force;
+            m2.movement -= Force;
+
+            m1.rotation += Force;
+            m2.rotation += Force;
+        }
+
         //
-        sf::Vector2f GetMagForce(const Magnet& m1, const Magnet& m2) {
+        float GetForceMag(const Magnet& m1, const Magnet& m2) {
             auto shapeM1 = m1.GetShape();
             auto shapeM2 = m2.GetShape();
 
@@ -261,9 +264,13 @@ class Simulation {
             //zatim bez rozliseni polorovin--------------------------------
             double distance = Math::VecLen(shapeM2.getPosition() - shapeM1.getPosition());
             double FMagnitude = cos(angleM1) * cos(angleM2) / (distance*distance) * params.magForceCoeff;
+            //kladna/zaporna - urcuje pritahovani/odpuzovani => rotaci
+
+
             //std::cout << "a1: "<< Math::RadToDeg(angleM1) << " a2: " << Math::RadToDeg(angleM2) << " Magnitude: "<< FMagnitude << std::endl;
 
-            return sf::Vector2f(directionNorm.x * FMagnitude, directionNorm.y * FMagnitude);
+            return FMagnitude;
+            //return sf::Vector2f(directionNorm.x * FMagnitude, directionNorm.y * FMagnitude);
         }
 
         void SimpleCollisionDetection() {
@@ -295,7 +302,7 @@ int main() {
     
     sf::RenderWindow window(sf::VideoMode(fullscreen.width * winScale, fullscreen.height * winScale), "Magnet Simulation");
     //window.setVerticalSyncEnabled(true);
-    window.setFramerateLimit(1); //debug
+    window.setFramerateLimit(5); //debug
     ImGui::SFML::Init(window);
 
     Params params;
