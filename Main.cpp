@@ -70,6 +70,13 @@ class Math {
 
         float dot = DotProduct(v1, v2);
         dot = dot / v1Len / v2Len;
+        
+        //number rounding fix
+        if (dot > 1)
+            dot = 1;
+        if (dot < -1)
+            dot = -1;
+
         return acos(dot);
     }
     static float GetAngleDeg(const sf::Vector2f& v1, const sf::Vector2f& v2) {
@@ -92,6 +99,7 @@ class Math {
     static float TrueAngleFromBase(sf::Vector2f inVec, float deg) {
         float xAngle = AngleFromBaseX(deg, inVec);
         float yAngle = AngleFromBaseY(deg, inVec);
+        auto xx = AngleFromBaseX(deg, inVec);
         return GetTrueAngle(xAngle, yAngle);
     }
     private:
@@ -129,9 +137,9 @@ struct Params {
         if (!texture.loadFromFile("textures/RB.png")) {
             throw "Unable to load texture from file";
         }
-        magForceCoef = 10000;
-        radius = 30;
-        rotationCoef = 1; //debug, should be ~10
+        magForceCoef = 100000;
+        radius = 20;
+        rotationCoef = 20; //debug, should be ~10
     }
 };
 
@@ -152,7 +160,7 @@ class Magnet {
             shape.setTexture(&texture);
         }
         void Move() {
-            //shape.move(movement); //disabled
+            shape.move(movement); //disabled
             shape.rotate(GetRotationDeg());
 
             rotation = sf::Vector2f();
@@ -170,13 +178,6 @@ class Magnet {
             float limit = this->params.radius + other.params.radius;
             return distance < limit;
         }
-
-        /*/
-        sf::Vector2f GetDirection() const {
-            sf::Vector2f base(1, 0);
-            sf::Vector2f dir = Math::Rotate(base, shape.getRotation());
-            return dir;
-        }/**/
 
     private:
         //returns degree by which will be magnet rotated in next step
@@ -198,12 +199,24 @@ class Simulation {
         Simulation() = delete;
         Simulation(sf::RenderWindow& win, const Params& params) : window(win),params(params) {
             //ToDo: random generation
+            auto sz = window.getSize();
+            srand(time(0));
+            for (size_t i = 0; i < 30; ++i) {
+                size_t x = rand() % sz.x;
+                size_t y = rand() % sz.y;
+                size_t deg = rand() % 360;
+                Magnet m(params.texture, sf::Vector3f(x, y, deg), params);
+                magnets.push_back(m);
+            }
+
+            /*/
             Magnet m1(params.texture, sf::Vector3f(600,200, 20), params);
             magnets.push_back(m1);
             Magnet m2(params.texture, sf::Vector3f(700, 200, 180), params);
             magnets.push_back(m2);
             Magnet m3(params.texture, sf::Vector3f(650, 300, 40), params);
             magnets.push_back(m3);
+            /**/
         }
 
         void Step() {
@@ -255,14 +268,22 @@ class Simulation {
         void SimpleCollisionDetection() {
             //with magnets
             for (size_t i = 0; i < magnets.size(); ++i) {
+                if (CollidesWithWindow(magnets[i])) {
+                    magnets[i].MoveReverse();
+                }
                 for (size_t j = i + 1; j < magnets.size(); ++j) {
                     if (magnets[i].CollidesWith(magnets[j])) {
                         magnets[i].MoveReverse();
-                        magnets[j].MoveReverse();
+                        //magnets[j].MoveReverse();
                     }
                 }
             }
+
             //with window
+        }
+
+        //beta-window collision
+        bool CollidesWithWindow(Magnet m) {
         }
 };
 
@@ -279,8 +300,8 @@ int main() {
     float winScale = 0.5;
     
     sf::RenderWindow window(sf::VideoMode(fullscreen.width * winScale, fullscreen.height * winScale), "Magnet Simulation");
-    //window.setVerticalSyncEnabled(true);
-    window.setFramerateLimit(15); //debug
+    window.setVerticalSyncEnabled(true);
+    //window.setFramerateLimit(20); //debug
     ImGui::SFML::Init(window);
 
     Params params;
