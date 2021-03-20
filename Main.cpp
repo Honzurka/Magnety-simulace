@@ -107,7 +107,7 @@ class Math {
     static float GetTrueAngle(float xAngle, float yAngle) {
             if (xAngle <= 90) {
                 if (yAngle >= 90) { //270-360°
-                    return -xAngle;// 360 - xAngle;
+                    return -xAngle;
                 }
                 else { //0-90°
                     return xAngle;
@@ -115,7 +115,7 @@ class Math {
             }
             else {
                 if (yAngle >= 90) { //180-270°
-                    return -xAngle;// 360 - xAngle;
+                    return -xAngle;
                 }
                 else { //90-180°
                     return xAngle;
@@ -128,7 +128,7 @@ const float Math::pi = 3.14159265;
 //ToDo
 struct Params {
     sf::Texture texture;
-    float magForceCoef; //multiplies Magnets movement vector
+    float movCoef; //multiplies Magnets movement vector
     float radius;
     float rotationCoef; //interval (0,1> - how much should magnet rotate towards final destination
     //float inertia //<0,1) how much energy should be conserved from previous movement
@@ -137,17 +137,18 @@ struct Params {
         if (!texture.loadFromFile("textures/RB.png")) {
             throw "Unable to load texture from file";
         }
-        magForceCoef = 100000;
+        movCoef = 50; //>1
         radius = 20;
-        rotationCoef = 20; //debug, should be ~10
+        rotationCoef = 1; //interval(0,1)
     }
 };
 
 class Magnet {
     public:
         sf::Vector2f movement;
-        sf::Vector2f rotation;
         sf::Vector2f lastMovement;
+        float rotation = 0;
+        float lastRotation = 0;
         const Params& params;
         sf::CircleShape shape;
         
@@ -160,10 +161,11 @@ class Magnet {
             shape.setTexture(&texture);
         }
         void Move() {
-            shape.move(movement); //disabled
-            shape.rotate(GetRotationDeg());
+            shape.move(movement * params.movCoef);
+            shape.rotate(rotation * params.rotationCoef);
 
-            rotation = sf::Vector2f();
+            lastRotation = rotation;
+            rotation = 0;
             lastMovement = movement;
             movement = sf::Vector2f();
         }
@@ -179,18 +181,24 @@ class Magnet {
             return distance < limit;
         }
 
-    private:
-        //returns degree by which will be magnet rotated in next step
-        float GetRotationDeg() {
-            float angleFromBase = Math::TrueAngleFromBase(rotation, shape.getRotation());
+        void RotateAttract(sf::Vector2f fDir, float fCoeff) {
+            float angleFromBase = Math::TrueAngleFromBase(fDir, shape.getRotation());
             float rotDeg;
             if (abs(angleFromBase) <= 90) {
-                rotDeg = -angleFromBase / params.rotationCoef;
+                rotDeg = -angleFromBase;
             }
             else {
-                rotDeg = (180 - abs(angleFromBase)) / params.rotationCoef;
+                int sign = angleFromBase < 0 ? -1 : 1;
+                rotDeg = (180 - abs(angleFromBase)) * sign;
             }
-            return rotDeg;
+            rotation += rotDeg*fCoeff;
+
+        }
+
+        void RotateRepel(sf::Vector2f fDir, float fCoeff) {
+            float angleFromBase = Math::TrueAngleFromBase(fDir, shape.getRotation());
+            std::cout << angleFromBase << std::endl;
+            rotation += angleFromBase * fCoeff;
         }
 };
 
@@ -199,23 +207,25 @@ class Simulation {
         Simulation() = delete;
         Simulation(sf::RenderWindow& win, const Params& params) : window(win),params(params) {
             //ToDo: random generation
+            /*/
             auto sz = window.getSize();
             srand(time(0));
-            for (size_t i = 0; i < 30; ++i) {
+            for (size_t i = 0; i < 2; ++i) {
                 size_t x = rand() % sz.x;
                 size_t y = rand() % sz.y;
                 size_t deg = rand() % 360;
                 Magnet m(params.texture, sf::Vector3f(x, y, deg), params);
                 magnets.push_back(m);
             }
+            /**/
 
-            /*/
-            Magnet m1(params.texture, sf::Vector3f(600,200, 20), params);
+            /**/
+            Magnet m1(params.texture, sf::Vector3f(400,200, 30), params);
             magnets.push_back(m1);
-            Magnet m2(params.texture, sf::Vector3f(700, 200, 180), params);
+            Magnet m2(params.texture, sf::Vector3f(700, 200, -30), params);
             magnets.push_back(m2);
-            Magnet m3(params.texture, sf::Vector3f(650, 300, 40), params);
-            magnets.push_back(m3);
+            //Magnet m3(params.texture, sf::Vector3f(650, 300, 40), params);
+            //magnets.push_back(m3);
             /**/
         }
 
@@ -226,7 +236,7 @@ class Simulation {
                 }
                 magnets[i].Move();
             }
-            SimpleCollisionDetection();
+            //SimpleCollisionDetection();
         }
 
         void Draw() {
@@ -241,27 +251,43 @@ class Simulation {
 
         //alters magnets movement and rotaions
         void ApplyMagForce(Magnet& m1, Magnet& m2) {
-            float ForceMagitude = GetForceMag(m1, m2);
-            sf::Vector2f ForceDir = Math::NormalizeVec(m2.shape.getPosition() - m1.shape.getPosition());
-            sf::Vector2f Force = ForceMagitude * ForceDir;
+            float fCoeff = GetForceCoeff(m1, m2);
+            sf::Vector2f fDir = Math::NormalizeVec(m2.shape.getPosition() - m1.shape.getPosition());
+            sf::Vector2f force = fDir * fCoeff;
+            sf::Vector2f fDirNeg(-fDir.x, -fDir.y);
 
-            m1.movement += Force;
-            m2.movement -= Force;
+            m1.movement += force;
+            m2.movement -= force;
 
-            m1.rotation += Force;
-            m2.rotation += Force;
+            if (fCoeff > 0) {
+                m1.RotateAttract(fDir, fCoeff);
+                m2.RotateAttract(fDir, fCoeff);
+            }
+            else {
+                m1.RotateRepel(fDirNeg, fCoeff);
+                m2.RotateRepel(fDirNeg, fCoeff);
+            }
+
+            //ToDo
+            //force > 0 -> shortest rotation
+            //force <0 -> rot towards axis
+            //m1.rotation += Force;
+            //m2.rotation += Force;
         }
 
-        //returns magnitude of magnetic force between 2 magnets
-        float GetForceMag(const Magnet& m1, const Magnet& m2) {
+        //returns magnetic force coeff from interval(-1,1)
+        float GetForceCoeff(const Magnet& m1, const Magnet& m2) {
             sf::Vector2f dir = m2.shape.getPosition() - m1.shape.getPosition();
             float dist = Math::VecLen(dir);
+            std::cout << dist << std::endl;
 
             float angleM1 = Math::DegToRad(Math::AngleFromBaseX(m1.shape.getRotation(), dir));
             float angleM2 = Math::DegToRad(Math::AngleFromBaseX(m2.shape.getRotation(), dir));
 
-            float FMagnitude = cos(angleM1) * cos(angleM2) / (dist * dist) * params.magForceCoef;
-            return FMagnitude;
+            float fMagnitude = cos(angleM1) * cos(angleM2) / (dist * dist); //mozne pricteni konstanty pro zrychleni.....
+            float fMax = 1 * 1 / (params.radius * params.radius); //readadibility
+            float fCoeff = fMagnitude / fMax; //debug: wether is really from given interval
+            return fCoeff;
         }
 
         //ToDo------------------------------------------------------------------
@@ -284,6 +310,11 @@ class Simulation {
 
         //beta-window collision
         bool CollidesWithWindow(Magnet m) {
+            auto sz = window.getSize();
+            auto pos = m.shape.getPosition();
+            if (pos.x < 0 || pos.y < 0 || pos.x > sz.x || pos.y > sz.y)
+                return true;
+            return false;
         }
 };
 
@@ -300,8 +331,8 @@ int main() {
     float winScale = 0.5;
     
     sf::RenderWindow window(sf::VideoMode(fullscreen.width * winScale, fullscreen.height * winScale), "Magnet Simulation");
-    window.setVerticalSyncEnabled(true);
-    //window.setFramerateLimit(20); //debug
+    //window.setVerticalSyncEnabled(true);
+    window.setFramerateLimit(20); //debug
     ImGui::SFML::Init(window);
 
     Params params;
