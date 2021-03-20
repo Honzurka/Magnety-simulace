@@ -146,11 +146,12 @@ struct Params {
         if (!texture.loadFromFile("textures/RB.png")) {
             throw "Unable to load texture from file";
         }
-        movCoef = 6; 
+        movCoef = 8; 
         radius = 20;
         rotationCoef = 0.3;
         inertia = 0.1;
-        fConst = 0.00001;
+        //fConst = 0.00001;
+        fConst = 0.000001;
     }
 };
 
@@ -186,7 +187,8 @@ class Magnet {
             rotation = ((1 - params.inertia) * rotation + params.inertia * lastRotation) * params.rotationCoef;
         }
 
-        void ResolvePossibleCollision(Magnet& other) {
+        //uprava-nezavisle x,y ?? chci zajistit odvalovani
+        void ResolveMagCollision(Magnet& other) {
             if (!CollidesWith(other)) return;
             float dist = Math::VecLen(this->shape.getPosition() - other.shape.getPosition());
             float freeDist = dist - this->params.radius - other.params.radius;
@@ -208,6 +210,27 @@ class Magnet {
             //other movement pricvaknu
             float otherNewLen = freeDist - thisNewLen; //bude fungovat presne??
             other.movement = Math::SetLen(other.movement, otherNewLen);
+        }
+
+        //zjednodusene, neni presne
+        void ResolveWinCollision(sf::Vector2u winSz) {
+            sf::Vector2f pos = shape.getPosition();
+            float radius = params.radius;
+            float nextX = pos.x + movement.x;
+            float nextY = pos.y + movement.y;
+            float comp;
+            if ((comp = nextX - radius) < 0) {
+                movement.x -= comp;
+            }
+            if ((comp = nextX + radius) > winSz.x) {
+                movement.x -= comp - winSz.x;
+            }
+            if ((comp = nextY - radius) < 0) {
+                movement.y -= comp;
+            }
+            if ((comp = nextY + radius) > winSz.y) {
+                movement.y -= comp - winSz.y;
+            }
         }
 
         void RotateAttract(sf::Vector2f fDir, float fCoeff) {
@@ -246,7 +269,7 @@ class Simulation {
             /**/
             auto sz = window.getSize();
             srand(time(0));
-            for (size_t i = 0; i < 3; ++i) {
+            for (size_t i = 0; i < 100; ++i) {
                 size_t x = rand() % sz.x;
                 size_t y = rand() % sz.y;
                 size_t deg = rand() % 360;
@@ -319,14 +342,14 @@ class Simulation {
             float angleM2 = Math::DegToRad(Math::AngleFromBaseX(m2.shape.getRotation(), dir));
 
             float fMagnitude = cos(angleM1) * cos(angleM2) / (dist * dist);
-            float fMax = 1 * 1 / (params.radius * params.radius * 4);
+            float fMax = 1 * 1 / (params.radius * params.radius * 4); //test--na 1 na 3,...
             
             //adding constant => behaves more like magnet
             fMagnitude < 0 ? fMagnitude -= params.fConst : fMagnitude += params.fConst;
             fMax < 0 ? fMax -= params.fConst : fMax += params.fConst;
 
 
-            float fCoeff = fMagnitude / fMax; //debug: wether is really from given interval
+            float fCoeff = fMagnitude / fMax; //should return value from (-1,1) - assert?
             return fCoeff;
         }
 
@@ -336,8 +359,10 @@ class Simulation {
                 //j == magnety se kterymi muze i kolidovat
                 for (size_t j = 0; j < magnets.size(); j++) {
                     if (i == j) continue;
-                    magnets[i].ResolvePossibleCollision(magnets[j]);
+                    magnets[i].ResolveMagCollision(magnets[j]);
                 }
+                magnets[i].ResolveWinCollision(window.getSize());
+
                 magnets[i].Move();
             }
         }
