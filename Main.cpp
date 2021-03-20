@@ -43,18 +43,23 @@ class Math {
         float y = sin(angleRad) * input.x + cos(angleRad) * input.y;
         return sf::Vector2f(x, y);
     }
-    static float DotProduct(sf::Vector2f v1, sf::Vector2f v2) {
+    static float DotProduct(const sf::Vector2f& v1, const sf::Vector2f& v2) {
         return v1.x * v2.x + v1.y * v2.y;
     }
-    static float VecLen(sf::Vector2f vec) {
+    static float VecLen(const sf::Vector2f& vec) {
         return sqrt(vec.x * vec.x + vec.y * vec.y);
     }
-    static sf::Vector2f NormalizeVec(sf::Vector2f vec) {
+    static sf::Vector2f NormalizeVec(const sf::Vector2f& vec) {
         float vecLen = VecLen(vec);
         if (vecLen == 0) {
             throw "Cannot normalize zero vector";
         }
         return sf::Vector2f(vec.x / vecLen, vec.y / vecLen);
+    }
+    static sf::Vector2f SetLen(const sf::Vector2f& vec, float len) {
+        sf::Vector2f res = NormalizeVec(vec);
+        res *= len;
+        return res;
     }
     static float DegToRad(float deg) {
         return deg / 180 * pi;
@@ -84,24 +89,25 @@ class Math {
         return RadToDeg(angleRad);
     }
     //returns angle(DEG) between inVec and (1,0) rotated by deg
-    static float AngleFromBaseX(float deg, sf::Vector2f inVec) {
+    static float AngleFromBaseX(float deg, const sf::Vector2f& inVec) {
         sf::Vector2f xBase(1, 0);
         sf::Vector2f xDir = Math::Rotate(xBase, deg);
         return Math::GetAngleDeg(xDir, inVec);
     }
     //returns angle(DEG) between inVec and (0,-1) rotated by deg
-    static float AngleFromBaseY(float deg, sf::Vector2f inVec) {
+    static float AngleFromBaseY(float deg, const sf::Vector2f& inVec) {
         sf::Vector2f yBase(0, -1);
         sf::Vector2f yDir = Math::Rotate(yBase, deg);
         return Math::GetAngleDeg(yDir, inVec);
     }
     //returns angle(in DEG) from interval (-180,180) between inVec and vector(1,0)
-    static float TrueAngleFromBase(sf::Vector2f inVec, float deg) {
+    static float TrueAngleFromBase(const sf::Vector2f& inVec, float deg) {
         float xAngle = AngleFromBaseX(deg, inVec);
         float yAngle = AngleFromBaseY(deg, inVec);
         auto xx = AngleFromBaseX(deg, inVec);
         return GetTrueAngle(xAngle, yAngle);
     }
+
     private:
     //returns angle(DEG) based on quadrant determined by args
     static float GetTrueAngle(float xAngle, float yAngle) {
@@ -137,8 +143,8 @@ struct Params {
         if (!texture.loadFromFile("textures/RB.png")) {
             throw "Unable to load texture from file";
         }
-        movCoef = 50; //>1
-        radius = 20;
+        movCoef = 5; //>1, <radius (jinak se preskakuji)
+        radius = 20;// 20;
         rotationCoef = 1; //interval(0,1)
     }
 };
@@ -161,8 +167,9 @@ class Magnet {
             shape.setTexture(&texture);
         }
         void Move() {
-            shape.move(movement * params.movCoef);
-            shape.rotate(rotation * params.rotationCoef);
+            shape.move(movement);
+            shape.rotate(rotation);
+            //std::cout << movement.x << std::endl; //...
 
             lastRotation = rotation;
             rotation = 0;
@@ -170,15 +177,40 @@ class Magnet {
             movement = sf::Vector2f();
         }
 
-        //for simple collision detection-----------------------------
-        void MoveReverse() {
-            shape.move(-lastMovement);
+        void ApplyCoeffs() {
+            //ToDo: add inertia
+            movement *= params.movCoef;
+            rotation *= params.rotationCoef;
         }
 
-        bool CollidesWith(Magnet other) {
-            float distance = Math::VecLen(this->shape.getPosition() - other.shape.getPosition());
-            float limit = this->params.radius + other.params.radius;
-            return distance < limit;
+        void ResolvePossibleCollision(Magnet& other) {
+            if (!CollidesWith(other)) return;
+            float dist = Math::VecLen(this->shape.getPosition() - other.shape.getPosition());
+            float freeDist = dist - this->params.radius - other.params.radius;
+
+            float thisLen = Math::VecLen(this->movement);
+            float otherLen = Math::VecLen(other.movement);
+            if (thisLen == 0) {
+                other.movement = Math::SetLen(other.movement, freeDist);
+                return;
+            }
+            if (otherLen == 0) {
+                this->movement = Math::SetLen(this->movement, freeDist);
+                return;
+            }
+
+            float thisNewLen = freeDist / (thisLen + otherLen) * thisLen;
+            this->movement = Math::SetLen(this->movement, thisNewLen);
+            
+            //other movement pricvaknu
+            float otherNewLen = freeDist - thisNewLen; //bude fungovat presne??
+            other.movement = Math::SetLen(other.movement, otherNewLen);
+
+            //debug
+            float debugDist = Math::VecLen(this->shape.getPosition() + this->movement - other.shape.getPosition() - other.movement);
+            debugDist = debugDist - this->params.radius - other.params.radius;
+            std::cout << debugDist << std::endl; //should be 0
+
         }
 
         void RotateAttract(sf::Vector2f fDir, float fCoeff) {
@@ -194,11 +226,18 @@ class Magnet {
             rotation += rotDeg*fCoeff;
 
         }
-
         void RotateRepel(sf::Vector2f fDir, float fCoeff) {
             float angleFromBase = Math::TrueAngleFromBase(fDir, shape.getRotation());
-            std::cout << angleFromBase << std::endl;
             rotation += angleFromBase * fCoeff;
+        }
+    private:
+
+        bool CollidesWith(const Magnet& other) { //snad se nebudou preskakovat...-pri 60fps by byl nutny prilis velky pohyb
+            sf::Vector2f pos1 = this->shape.getPosition() + this->movement;
+            sf::Vector2f pos2 = other.shape.getPosition() + other.movement;
+            float distance = Math::VecLen(pos1 - pos2);
+            float limit = this->params.radius + other.params.radius;
+            return distance < limit;
         }
 };
 
@@ -220,13 +259,14 @@ class Simulation {
             /**/
 
             /**/
-            Magnet m1(params.texture, sf::Vector3f(400,200, 30), params);
+            Magnet m1(params.texture, sf::Vector3f(600,200, 30), params);
             magnets.push_back(m1);
             Magnet m2(params.texture, sf::Vector3f(700, 200, -30), params);
             magnets.push_back(m2);
+            /**/
+
             //Magnet m3(params.texture, sf::Vector3f(650, 300, 40), params);
             //magnets.push_back(m3);
-            /**/
         }
 
         void Step() {
@@ -234,9 +274,9 @@ class Simulation {
                 for (size_t j = i + 1; j < magnets.size(); ++j) {
                     ApplyMagForce(magnets[i], magnets[j]);
                 }
-                magnets[i].Move();
-            }
-            //SimpleCollisionDetection();
+                magnets[i].ApplyCoeffs();
+            }            
+            MoveMagnets();
         }
 
         void Draw() {
@@ -252,9 +292,16 @@ class Simulation {
         //alters magnets movement and rotaions
         void ApplyMagForce(Magnet& m1, Magnet& m2) {
             float fCoeff = GetForceCoeff(m1, m2);
+            auto dpos1 = m2.shape.getPosition();
+            auto dpos2 = m1.shape.getPosition();
+
+
             sf::Vector2f fDir = Math::NormalizeVec(m2.shape.getPosition() - m1.shape.getPosition());
             sf::Vector2f force = fDir * fCoeff;
             sf::Vector2f fDirNeg(-fDir.x, -fDir.y);
+
+            std::cout << force.x << std::endl;
+
 
             m1.movement += force;
             m2.movement -= force;
@@ -267,54 +314,32 @@ class Simulation {
                 m1.RotateRepel(fDirNeg, fCoeff);
                 m2.RotateRepel(fDirNeg, fCoeff);
             }
-
-            //ToDo
-            //force > 0 -> shortest rotation
-            //force <0 -> rot towards axis
-            //m1.rotation += Force;
-            //m2.rotation += Force;
         }
 
-        //returns magnetic force coeff from interval(-1,1)
+        //returns magnetic force coeff in interval(-1,1)
         float GetForceCoeff(const Magnet& m1, const Magnet& m2) {
             sf::Vector2f dir = m2.shape.getPosition() - m1.shape.getPosition();
             float dist = Math::VecLen(dir);
-            std::cout << dist << std::endl;
 
             float angleM1 = Math::DegToRad(Math::AngleFromBaseX(m1.shape.getRotation(), dir));
             float angleM2 = Math::DegToRad(Math::AngleFromBaseX(m2.shape.getRotation(), dir));
 
             float fMagnitude = cos(angleM1) * cos(angleM2) / (dist * dist); //mozne pricteni konstanty pro zrychleni.....
-            float fMax = 1 * 1 / (params.radius * params.radius); //readadibility
+            float fMax = 1 * 1 / (params.radius * params.radius * 4); //readadibility
             float fCoeff = fMagnitude / fMax; //debug: wether is really from given interval
             return fCoeff;
         }
 
-        //ToDo------------------------------------------------------------------
-        void SimpleCollisionDetection() {
-            //with magnets
-            for (size_t i = 0; i < magnets.size(); ++i) {
-                if (CollidesWithWindow(magnets[i])) {
-                    magnets[i].MoveReverse();
+        void MoveMagnets() {
+            for (size_t i = 0; i < magnets.size(); ++i)
+            {
+                //j == magnety se kterymi muze i kolidovat
+                for (size_t j = 0; j < magnets.size(); j++) {
+                    if (i == j) continue;
+                    magnets[i].ResolvePossibleCollision(magnets[j]);
                 }
-                for (size_t j = i + 1; j < magnets.size(); ++j) {
-                    if (magnets[i].CollidesWith(magnets[j])) {
-                        magnets[i].MoveReverse();
-                        //magnets[j].MoveReverse();
-                    }
-                }
+                magnets[i].Move();
             }
-
-            //with window
-        }
-
-        //beta-window collision
-        bool CollidesWithWindow(Magnet m) {
-            auto sz = window.getSize();
-            auto pos = m.shape.getPosition();
-            if (pos.x < 0 || pos.y < 0 || pos.x > sz.x || pos.y > sz.y)
-                return true;
-            return false;
         }
 };
 
@@ -331,8 +356,8 @@ int main() {
     float winScale = 0.5;
     
     sf::RenderWindow window(sf::VideoMode(fullscreen.width * winScale, fullscreen.height * winScale), "Magnet Simulation");
-    //window.setVerticalSyncEnabled(true);
-    window.setFramerateLimit(20); //debug
+    window.setVerticalSyncEnabled(true);
+    //window.setFramerateLimit(20); //debug
     ImGui::SFML::Init(window);
 
     Params params;
