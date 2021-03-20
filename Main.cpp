@@ -52,7 +52,9 @@ class Math {
     static sf::Vector2f NormalizeVec(const sf::Vector2f& vec) {
         float vecLen = VecLen(vec);
         if (vecLen == 0) {
-            throw "Cannot normalize zero vector";
+            std::cout << "cannot normalize zero vector" << std::endl;
+            //throw "Cannot normalize zero vector";
+            return vec; //snaha opravit pripadne chyby...
         }
         return sf::Vector2f(vec.x / vecLen, vec.y / vecLen);
     }
@@ -134,18 +136,21 @@ const float Math::pi = 3.14159265;
 //ToDo
 struct Params {
     sf::Texture texture;
-    float movCoef; //multiplies Magnets movement vector
+    float movCoef; //>1, <radius (jinak se preskakuji)
     float radius;
-    float rotationCoef; //interval (0,1> - how much should magnet rotate towards final destination
-    //float inertia //<0,1) how much energy should be conserved from previous movement
+    float rotationCoef; //interval (0,1)
+    float inertia; //(0,1) how much energy should be conserved from previous movement --might get wild with both movCoef and inertia high
+    float fConst; //really small ~ 0.00001;
 
     Params SetDefault() {
         if (!texture.loadFromFile("textures/RB.png")) {
             throw "Unable to load texture from file";
         }
-        movCoef = 5; //>1, <radius (jinak se preskakuji)
-        radius = 20;// 20;
-        rotationCoef = 1; //interval(0,1)
+        movCoef = 6; 
+        radius = 20;
+        rotationCoef = 0.3;
+        inertia = 0.1;
+        fConst = 0.00001;
     }
 };
 
@@ -169,7 +174,6 @@ class Magnet {
         void Move() {
             shape.move(movement);
             shape.rotate(rotation);
-            //std::cout << movement.x << std::endl; //...
 
             lastRotation = rotation;
             rotation = 0;
@@ -178,9 +182,8 @@ class Magnet {
         }
 
         void ApplyCoeffs() {
-            //ToDo: add inertia
-            movement *= params.movCoef;
-            rotation *= params.rotationCoef;
+            movement = ((1 - params.inertia) * movement + params.inertia * lastMovement) * params.movCoef;
+            rotation = ((1 - params.inertia) * rotation + params.inertia * lastRotation) * params.rotationCoef;
         }
 
         void ResolvePossibleCollision(Magnet& other) {
@@ -205,12 +208,6 @@ class Magnet {
             //other movement pricvaknu
             float otherNewLen = freeDist - thisNewLen; //bude fungovat presne??
             other.movement = Math::SetLen(other.movement, otherNewLen);
-
-            //debug
-            float debugDist = Math::VecLen(this->shape.getPosition() + this->movement - other.shape.getPosition() - other.movement);
-            debugDist = debugDist - this->params.radius - other.params.radius;
-            std::cout << debugDist << std::endl; //should be 0
-
         }
 
         void RotateAttract(sf::Vector2f fDir, float fCoeff) {
@@ -246,10 +243,10 @@ class Simulation {
         Simulation() = delete;
         Simulation(sf::RenderWindow& win, const Params& params) : window(win),params(params) {
             //ToDo: random generation
-            /*/
+            /**/
             auto sz = window.getSize();
             srand(time(0));
-            for (size_t i = 0; i < 2; ++i) {
+            for (size_t i = 0; i < 3; ++i) {
                 size_t x = rand() % sz.x;
                 size_t y = rand() % sz.y;
                 size_t deg = rand() % 360;
@@ -258,10 +255,10 @@ class Simulation {
             }
             /**/
 
-            /**/
-            Magnet m1(params.texture, sf::Vector3f(600,200, 30), params);
+            /*/
+            Magnet m1(params.texture, sf::Vector3f(600, 200, -30), params);
             magnets.push_back(m1);
-            Magnet m2(params.texture, sf::Vector3f(700, 200, -30), params);
+            Magnet m2(params.texture, sf::Vector3f(700, 200, 180), params);
             magnets.push_back(m2);
             /**/
 
@@ -300,9 +297,6 @@ class Simulation {
             sf::Vector2f force = fDir * fCoeff;
             sf::Vector2f fDirNeg(-fDir.x, -fDir.y);
 
-            std::cout << force.x << std::endl;
-
-
             m1.movement += force;
             m2.movement -= force;
 
@@ -324,8 +318,14 @@ class Simulation {
             float angleM1 = Math::DegToRad(Math::AngleFromBaseX(m1.shape.getRotation(), dir));
             float angleM2 = Math::DegToRad(Math::AngleFromBaseX(m2.shape.getRotation(), dir));
 
-            float fMagnitude = cos(angleM1) * cos(angleM2) / (dist * dist); //mozne pricteni konstanty pro zrychleni.....
-            float fMax = 1 * 1 / (params.radius * params.radius * 4); //readadibility
+            float fMagnitude = cos(angleM1) * cos(angleM2) / (dist * dist);
+            float fMax = 1 * 1 / (params.radius * params.radius * 4);
+            
+            //adding constant => behaves more like magnet
+            fMagnitude < 0 ? fMagnitude -= params.fConst : fMagnitude += params.fConst;
+            fMax < 0 ? fMax -= params.fConst : fMax += params.fConst;
+
+
             float fCoeff = fMagnitude / fMax; //debug: wether is really from given interval
             return fCoeff;
         }
