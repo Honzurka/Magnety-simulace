@@ -34,6 +34,8 @@
 */
 
 
+const int menuWidth = 200;
+
 class Math {
     public:
     static const float pi;
@@ -49,12 +51,11 @@ class Math {
     static float VecLen(const sf::Vector2f& vec) {
         return sqrt(vec.x * vec.x + vec.y * vec.y);
     }
+    //if zero vector is passed then its returned back
     static sf::Vector2f NormalizeVec(const sf::Vector2f& vec) {
         float vecLen = VecLen(vec);
         if (vecLen == 0) {
-            std::cout << "cannot normalize zero vector" << std::endl;
-            //throw "Cannot normalize zero vector";
-            return vec; //snaha opravit pripadne chyby...
+            return vec;
         }
         return sf::Vector2f(vec.x / vecLen, vec.y / vecLen);
     }
@@ -136,22 +137,26 @@ const float Math::pi = 3.14159265;
 //ToDo
 struct Params {
     sf::Texture texture;
-    float movCoef; //>1, <radius (jinak se preskakuji)
     float radius;
+    int magCount;
+
+    float movCoef; //>1, <2*radius (jinak se preskakuji)
     float rotationCoef; //interval (0,1)
     float inertia; //(0,1) how much energy should be conserved from previous movement --might get wild with both movCoef and inertia high
-    float fConst; //really small ~ 0.00001;
+    float fConst = 0.00001;
+    float fConstMult = 10;
 
+    bool isRunning = true;
     Params SetDefault() {
         if (!texture.loadFromFile("textures/RB.png")) {
             throw "Unable to load texture from file";
         }
-        movCoef = 8; 
         radius = 20;
+        magCount = 3;
+
+        movCoef = 8;
         rotationCoef = 0.3;
         inertia = 0.1;
-        //fConst = 0.00001;
-        fConst = 0.000001;
     }
 };
 
@@ -188,6 +193,7 @@ class Magnet {
         }
 
         //uprava-nezavisle x,y ?? chci zajistit odvalovani
+        //todo: refactor
         void ResolveMagCollision(Magnet& other) {
             if (!CollidesWith(other)) return;
             float dist = Math::VecLen(this->shape.getPosition() - other.shape.getPosition());
@@ -212,24 +218,28 @@ class Magnet {
             other.movement = Math::SetLen(other.movement, otherNewLen);
         }
 
-        //zjednodusene, neni presne
+        //zjednodusene, neni presne !!! y <0 moc nefunguje...
         void ResolveWinCollision(sf::Vector2u winSz) {
             sf::Vector2f pos = shape.getPosition();
             float radius = params.radius;
             float nextX = pos.x + movement.x;
             float nextY = pos.y + movement.y;
             float comp;
-            if ((comp = nextX - radius) < 0) {
-                movement.x -= comp;
+            if ((comp = nextX - radius) < menuWidth) { //menu on left side
+                movement.x -= comp - menuWidth;
+                return;
             }
             if ((comp = nextX + radius) > winSz.x) {
                 movement.x -= comp - winSz.x;
+                return;
             }
             if ((comp = nextY - radius) < 0) {
                 movement.y -= comp;
+                return;
             }
             if ((comp = nextY + radius) > winSz.y) {
                 movement.y -= comp - winSz.y;
+                return;
             }
         }
 
@@ -252,7 +262,7 @@ class Magnet {
         }
     private:
 
-        bool CollidesWith(const Magnet& other) { //snad se nebudou preskakovat...-pri 60fps by byl nutny prilis velky pohyb
+        bool CollidesWith(const Magnet& other) {
             sf::Vector2f pos1 = this->shape.getPosition() + this->movement;
             sf::Vector2f pos2 = other.shape.getPosition() + other.movement;
             float distance = Math::VecLen(pos1 - pos2);
@@ -265,28 +275,31 @@ class Simulation {
     public:
         Simulation() = delete;
         Simulation(sf::RenderWindow& win, const Params& params) : window(win),params(params) {
-            //ToDo: random generation
-            /**/
+            Generate();
+        }
+
+        //ToDo: random generation -- aby se negenerovali do sebe //nesmi kolidovat ani s oknem
+        void Generate() {
+            magnets.clear();
             auto sz = window.getSize();
             srand(time(0));
-            for (size_t i = 0; i < 100; ++i) {
+            for (size_t i = 0; i < params.magCount; ++i) {
                 size_t x = rand() % sz.x;
                 size_t y = rand() % sz.y;
                 size_t deg = rand() % 360;
                 Magnet m(params.texture, sf::Vector3f(x, y, deg), params);
                 magnets.push_back(m);
+
+                /*/
+                Magnet m1(params.texture, sf::Vector3f(600, 200, -30), params);
+                magnets.push_back(m1);
+                Magnet m2(params.texture, sf::Vector3f(700, 200, 180), params);
+                magnets.push_back(m2);
+                /**/
+
+                //Magnet m3(params.texture, sf::Vector3f(650, 300, 40), params);
+                //magnets.push_back(m3);
             }
-            /**/
-
-            /*/
-            Magnet m1(params.texture, sf::Vector3f(600, 200, -30), params);
-            magnets.push_back(m1);
-            Magnet m2(params.texture, sf::Vector3f(700, 200, 180), params);
-            magnets.push_back(m2);
-            /**/
-
-            //Magnet m3(params.texture, sf::Vector3f(650, 300, 40), params);
-            //magnets.push_back(m3);
         }
 
         void Step() {
@@ -349,7 +362,8 @@ class Simulation {
             fMax < 0 ? fMax -= params.fConst : fMax += params.fConst;
 
 
-            float fCoeff = fMagnitude / fMax; //should return value from (-1,1) - assert?
+            float fCoeff = fMagnitude / fMax;
+            //assert(fCoeff >= -1 && fCoeff <= 1);
             return fCoeff;
         }
 
@@ -368,11 +382,39 @@ class Simulation {
         }
 };
 
-void ShowMenu(const sf::Window& win, Params& params) {
-    ImGui::ShowDemoWindow();
+void ShowMenu(const sf::Window& win, Params& params, Simulation& sim) {
+    //ImGui::ShowDemoWindow(); //vzor
 
-    ImGui::Begin("Hello, world!");
-    ImGui::Button("Look at this pretty button");
+    ImGui::Begin("Main Menu");
+    ImGui::SetWindowSize(ImVec2(menuWidth, win.getSize().y));
+    ImGui::SetWindowPos(ImVec2(0, 0));
+    if (params.isRunning) {
+        if (ImGui::Button("STOP")) {
+            params.isRunning = false;
+        }
+    }
+    else {
+        if (ImGui::Button("START")) {
+            params.isRunning = true;
+        }
+    }
+    if(ImGui::Button("RESET")) {
+        sim.Generate();
+    }
+
+    ImGui::Text(""); //space
+    ImGui::Text("Visual");
+    ImGui::SliderFloat("radius", &params.radius, 5, 100);
+    ImGui::SliderInt("magnet count", &params.magCount, 1, 100);
+
+    ImGui::Text(""); //space
+    ImGui::Text("Movement");
+    ImGui::SliderFloat("movCoef", &params.movCoef, 0.1f, fmin(params.radius * 1.99, 1/params.inertia)); //jaky nastavit min???
+    ImGui::SliderFloat("rotationCoef", &params.rotationCoef, 0, 1);
+    ImGui::SliderFloat("inertia", &params.inertia, 0, 1);
+    ImGui::SliderFloat("force const", &params.fConstMult, 1, 200);
+    params.fConst = 0.000001 * params.fConstMult;
+
     ImGui::End();
 }
 
@@ -380,13 +422,13 @@ int main() {
     sf::VideoMode fullscreen = sf::VideoMode::getDesktopMode();
     float winScale = 0.5;
     
-    sf::RenderWindow window(sf::VideoMode(fullscreen.width * winScale, fullscreen.height * winScale), "Magnet Simulation");
+    sf::RenderWindow window(sf::VideoMode(fullscreen.width * winScale, fullscreen.height * winScale), "Magnet Simulation", sf::Style::Close);
     window.setVerticalSyncEnabled(true);
     //window.setFramerateLimit(20); //debug
     ImGui::SFML::Init(window);
 
     Params params;
-    params.SetDefault(); //can throw
+    params.SetDefault();
 
     sf::Clock deltaClock;
     Simulation sim(window, params);
@@ -400,9 +442,11 @@ int main() {
             }
         }
         ImGui::SFML::Update(window, deltaClock.restart());
+        ShowMenu(window, params, sim);
 
-        ShowMenu(window, params);
-        sim.Step();
+        if (params.isRunning) {
+            sim.Step();
+        }
 
         window.clear(sf::Color::White);
         sim.Draw();
