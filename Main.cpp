@@ -39,6 +39,10 @@ const int menuWidth = 200;
 class Math {
     public:
     static const float pi;
+    static int Random(int from, int to) {
+        int r = rand();
+        return r % (to-from) + from;
+    }
     static sf::Vector2f Rotate(const sf::Vector2f& input, float angle) {
         float angleRad = DegToRad(angle);
         float x = cos(angleRad) * input.x - sin(angleRad) * input.y;
@@ -212,7 +216,7 @@ class Magnet {
             other.movement = Math::SetLen(other.movement, otherNewLen);
         }
 
-        //zjednodusene, neni presne !!! y +ani- moc nefunguje...
+        //zjednodusene, neni presne     !!!y < 0 nefunguje
         void ResolveWinCollision(sf::Vector2u winSz) {
             sf::Vector2f pos = shape.getPosition();
             float radius = params.radius;
@@ -221,19 +225,15 @@ class Magnet {
             float comp;
             if ((comp = nextX - radius) < menuWidth) { //menu on left side
                 movement.x -= comp - menuWidth;
-                return;
             }
             if ((comp = nextX + radius) > winSz.x) {
                 movement.x -= comp - winSz.x;
-                return;
             }
             if ((comp = nextY - radius) < 0) {
                 movement.y -= comp;
-                return;
             }
             if ((comp = nextY + radius) > winSz.y) {
                 movement.y -= comp - winSz.y;
-                return;
             }
         }
 
@@ -254,7 +254,6 @@ class Magnet {
             float angleFromBase = Math::TrueAngleFromBase(fDir, shape.getRotation());
             rotation += angleFromBase * fCoeff;
         }
-    private:
 
         bool CollidesWith(const Magnet& other) {
             sf::Vector2f pos1 = this->shape.getPosition() + this->movement;
@@ -268,7 +267,7 @@ class Magnet {
 class Simulation {
     public:
         Simulation() = delete;
-        Simulation(sf::RenderWindow& win, const Params& params) : window(win),params(params) {
+        Simulation(sf::RenderWindow& win, Params& params) : window(win),params(params) {
             Generate();
         }
 
@@ -276,23 +275,38 @@ class Simulation {
         void Generate() {
             magnets.clear();
             auto sz = window.getSize();
-            srand(time(0));
-            for (size_t i = 0; i < params.magCount; ++i) {
-                size_t x = rand() % sz.x;
-                size_t y = rand() % sz.y;
+            size_t seed = time(0);
+            srand(seed);
+
+            while (magnets.size() != params.magCount) {
+                size_t x = Math::Random(menuWidth + params.radius, sz.x - params.radius);
+                size_t y = Math::Random(params.radius, sz.y - params.radius);
                 size_t deg = rand() % 360;
                 Magnet m(params.texture, sf::Vector3<size_t>(x, y, deg), params);
-                magnets.push_back(m);
 
-                /*/
-                Magnet m1(params.texture, sf::Vector3f(600, 200, -30), params);
-                magnets.push_back(m1);
-                Magnet m2(params.texture, sf::Vector3f(700, 200, 180), params);
-                magnets.push_back(m2);
-                /**/
-
-                //Magnet m3(params.texture, sf::Vector3f(650, 300, 40), params);
-                //magnets.push_back(m3);
+                const size_t stepLim = 100;
+                size_t step = 0;
+                bool collides = true;
+                while (collides && step < stepLim) {
+                    collides = false;
+                    for (size_t i = 0; i < magnets.size(); ++i) {
+                        if (m.CollidesWith(magnets[i])) {
+                            size_t newX = Math::Random(menuWidth + params.radius, sz.x - params.radius);
+                            size_t newY = Math::Random(params.radius, sz.y - params.radius);
+                            m.shape.setPosition(sf::Vector2f(newX, newY));
+                            collides = true;
+                            step++;
+                            break;
+                        }
+                    }
+                }
+                if (step == stepLim) {
+                    params.magCount = magnets.size();
+                    break;
+                }
+                else {
+                    magnets.push_back(m);
+                }
             }
         }
 
@@ -314,7 +328,7 @@ class Simulation {
     private:
         sf::RenderWindow& window;
         std::vector<Magnet> magnets;
-        const Params& params;
+        Params& params;
 
         //alters magnets movement and rotaions
         void ApplyMagForce(Magnet& m1, Magnet& m2) {
