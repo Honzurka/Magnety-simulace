@@ -132,31 +132,25 @@ class Math {
             }
         }
 };
-const float Math::pi = 3.14159265;
+const float Math::pi = 3.14159265f;
 
 //ToDo
 struct Params {
     sf::Texture texture;
-    float radius;
-    int magCount;
+    float radius = 20;
+    int magCount = 3;
 
-    float movCoef; //>1, <2*radius (jinak se preskakuji)
-    float rotationCoef; //interval (0,1)
-    float inertia; //(0,1) how much energy should be conserved from previous movement --might get wild with both movCoef and inertia high
-    float fConst = 0.00001;
-    float fConstMult = 10;
+    float movCoef = 8.f; //>1, <2*radius (jinak se preskakuji)
+    float rotationCoef = 0.3f; //interval (0,1)
+    float inertia = 0.1f; //(0,1) how much energy should be conserved from previous movement --might get wild with both movCoef and inertia high
+    float fConst = 0.00001f;
+    float fConstMult = 10.f;
 
     bool isRunning = true;
-    Params SetDefault() {
+    void SetDefault() {
         if (!texture.loadFromFile("textures/RB.png")) {
             throw "Unable to load texture from file";
         }
-        radius = 20;
-        magCount = 3;
-
-        movCoef = 8;
-        rotationCoef = 0.3;
-        inertia = 0.1;
     }
 };
 
@@ -170,11 +164,11 @@ class Magnet {
         sf::CircleShape shape;
         
         Magnet() = delete;
-        Magnet(const sf::Texture& texture, const sf::Vector3f& loc, const Params& params) :params(params){
+        Magnet(const sf::Texture& texture, const sf::Vector3<size_t>& loc, const Params& params) :params(params){
             shape.setRadius(params.radius);
             shape.setOrigin(params.radius, params.radius);
-            shape.setPosition(loc.x,loc.y);
-            shape.setRotation(loc.z);
+            shape.setPosition(static_cast<float>(loc.x), static_cast<float>(loc.y));
+            shape.setRotation(static_cast<float>(loc.z));
             shape.setTexture(&texture);
         }
         void Move() {
@@ -218,7 +212,7 @@ class Magnet {
             other.movement = Math::SetLen(other.movement, otherNewLen);
         }
 
-        //zjednodusene, neni presne !!! y <0 moc nefunguje...
+        //zjednodusene, neni presne !!! y +ani- moc nefunguje...
         void ResolveWinCollision(sf::Vector2u winSz) {
             sf::Vector2f pos = shape.getPosition();
             float radius = params.radius;
@@ -287,7 +281,7 @@ class Simulation {
                 size_t x = rand() % sz.x;
                 size_t y = rand() % sz.y;
                 size_t deg = rand() % 360;
-                Magnet m(params.texture, sf::Vector3f(x, y, deg), params);
+                Magnet m(params.texture, sf::Vector3<size_t>(x, y, deg), params);
                 magnets.push_back(m);
 
                 /*/
@@ -386,7 +380,8 @@ void ShowMenu(const sf::Window& win, Params& params, Simulation& sim) {
     //ImGui::ShowDemoWindow(); //vzor
 
     ImGui::Begin("Main Menu");
-    ImGui::SetWindowSize(ImVec2(menuWidth, win.getSize().y));
+    ImGui::PushItemWidth(menuWidth / 2.5);
+    ImGui::SetWindowSize(ImVec2(menuWidth, static_cast<float>(win.getSize().y)));
     ImGui::SetWindowPos(ImVec2(0, 0));
     if (params.isRunning) {
         if (ImGui::Button("STOP")) {
@@ -403,17 +398,17 @@ void ShowMenu(const sf::Window& win, Params& params, Simulation& sim) {
     }
 
     ImGui::Text(""); //space
-    ImGui::Text("Visual");
+    ImGui::Text("Visual - requires reset");
     ImGui::SliderFloat("radius", &params.radius, 5, 100);
     ImGui::SliderInt("magnet count", &params.magCount, 1, 100);
 
     ImGui::Text(""); //space
     ImGui::Text("Movement");
-    ImGui::SliderFloat("movCoef", &params.movCoef, 0.1f, fmin(params.radius * 1.99, 1/params.inertia)); //jaky nastavit min???
+    ImGui::SliderFloat("movCoef", &params.movCoef, 0.1f, fmin(params.radius * 1.99f, 1.0f/params.inertia)); //jaky nastavit min???
     ImGui::SliderFloat("rotationCoef", &params.rotationCoef, 0, 1);
     ImGui::SliderFloat("inertia", &params.inertia, 0, 1);
     ImGui::SliderFloat("force const", &params.fConstMult, 1, 200);
-    params.fConst = 0.000001 * params.fConstMult;
+    params.fConst = 0.000001f * params.fConstMult;
 
     ImGui::End();
 }
@@ -422,7 +417,7 @@ int main() {
     sf::VideoMode fullscreen = sf::VideoMode::getDesktopMode();
     float winScale = 0.5;
     
-    sf::RenderWindow window(sf::VideoMode(fullscreen.width * winScale, fullscreen.height * winScale), "Magnet Simulation", sf::Style::Close);
+    sf::RenderWindow window(sf::VideoMode(static_cast<size_t>(fullscreen.width * winScale), static_cast<size_t>(fullscreen.height * winScale)), "Magnet Simulation", sf::Style::Close);
     window.setVerticalSyncEnabled(true);
     //window.setFramerateLimit(20); //debug
     ImGui::SFML::Init(window);
