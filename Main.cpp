@@ -125,9 +125,9 @@ namespace Math {
 struct Params {
     sf::Texture texture;
     float radius = 20;
-    int magCount = 1;
+    int magCount = 2;
 
-    float movCoef = 8.f; //max 2x*radius otherwise magnets jump over each other
+    float movCoef = 0;//--------------------- 8.f; //max 2x*radius otherwise magnets jump over each other
     float rotationCoef = 0.5f; //interval (0,1)
     float inertia = 0.1f; //how much energy should be conserved from previous movement
 
@@ -262,49 +262,30 @@ class Simulation {
             Generate();
         }
 
-
         //Randomly populates collection of magnets
-        //stepLim - How many times will be tried to place last magnet
         //seed - for random generator
-        void Generate(size_t stepLim = 100, size_t seed = time(0)) {
+        void Generate(size_t seed = time(0)) {
             magnets.clear();
-            auto sz = window.getSize();
+            Magnet m(params.texture, sf::Vector3<size_t>(400, 100, 50), params);
+            magnets.push_back(m);
+            Magnet m1(params.texture, sf::Vector3<size_t>(600, 100, 180), params);
+            magnets.push_back(m1);
+
+            /*/
             srand(seed);
-            int radiusAsInt = static_cast<int>(params.radius);
             while (magnets.size() != params.magCount) {
-                size_t x = Math::Random(params.menuWidth + radiusAsInt, sz.x - radiusAsInt);
-                size_t y = Math::Random(radiusAsInt, sz.y - radiusAsInt);
-                size_t deg = rand() % 360;
-                Magnet m(params.texture, sf::Vector3<size_t>(x, y, deg), params);
-                size_t step = 0;
-                bool collides = true;
-                while (collides && step < stepLim) {
-                    collides = false;
-                    for (size_t i = 0; i < magnets.size(); ++i) {
-                        if (m.CollidesWith(magnets[i])) {
-                            float newX = static_cast<float>(Math::Random(params.menuWidth + radiusAsInt, sz.x - radiusAsInt));
-                            float newY = static_cast<float>(Math::Random(radiusAsInt, sz.y - radiusAsInt));
-                            m.shape.setPosition(V2(newX, newY));
-                            collides = true;
-                            step++;
-                            break;
-                        }
-                    }
-                }
-                if (step == stepLim) {
-                    params.magCount = magnets.size();
-                    break;
-                }
-                else {
+                auto [m, spawned] = SpawnMagnet();
+                if (spawned) {
                     magnets.push_back(m);
                 }
             }
+            /**/
         }
 
         void Step() {
             for (size_t i = 0; i < magnets.size(); ++i) {
                 for (size_t j = i + 1; j < magnets.size(); ++j) {
-                    CalcMagForce(magnets[i], magnets[j]);
+                    AlterForces(magnets[i], magnets[j]);
                 }
                 magnets[i].ApplyCoeffs();
             }            
@@ -321,24 +302,56 @@ class Simulation {
         std::vector<Magnet> magnets;
         Params& params;
 
-        //alters movement and rotation of both magnets
-        void CalcMagForce(Magnet& m1, Magnet& m2) {
-            float fCoeff = GetForceCoeff(m1, m2);
-            auto dpos1 = m2.shape.getPosition();
-            auto dpos2 = m1.shape.getPosition();
+        std::pair<float,float> GetRandomCoords(){
+            int radiusAsInt = static_cast<int>(params.radius);
+            auto sz = window.getSize();
+            float x = static_cast<float>(Math::Random(params.menuWidth + radiusAsInt, sz.x - radiusAsInt));
+            float y = static_cast<float>(Math::Random(radiusAsInt, sz.y - radiusAsInt));
+            return std::make_pair(x, y);
+        }
+
+        //stepLim - How many times will be tried to place last magnet
+        std::pair<Magnet,bool> SpawnMagnet(size_t stepLim = 100) {
+            auto [x, y] = GetRandomCoords();
+            size_t deg = rand() % 360;
+            Magnet m(params.texture, sf::Vector3<size_t>(x, y, deg), params);
             
+            size_t step = 0;
+            bool collides = true;
+            while (collides && step < stepLim) {
+                collides = false;
+                for (size_t i = 0; i < magnets.size(); ++i) {
+                    if (m.CollidesWith(magnets[i])) {
+                        auto [newX, newY] = GetRandomCoords();
+                        m.shape.setPosition(V2(newX, newY));
+                        collides = true;
+                        step++;
+                        break;
+                    }
+                }
+            }
+
+            if (step == stepLim) {
+                params.magCount = magnets.size();
+                return std::make_pair(m, false);
+            }
+            return std::make_pair(m, true);
+        }
+
+        //alters movement and rotation of both magnets
+        void AlterForces(Magnet& m1, Magnet& m2) {
+            float fCoeff = GetForceCoeff(m1, m2);
             V2 fDir = Math::NormalizeVec(m2.shape.getPosition() - m1.shape.getPosition());
             V2 force = fDir * fCoeff;
-            V2 fDirNeg(-fDir.x, -fDir.y);
 
             m1.movement += force;
             m2.movement -= force;
-
             if (fCoeff > 0) {
                 m1.RotateAttract(fDir, fCoeff);
                 m2.RotateAttract(fDir, fCoeff);
             }
             else {
+                V2 fDirNeg(-fDir.x, -fDir.y);
                 m1.RotateRepel(fDirNeg, fCoeff);
                 m2.RotateRepel(fDirNeg, fCoeff);
             }
@@ -347,17 +360,24 @@ class Simulation {
         //retval in (-1,1)
         float GetForceCoeff(const Magnet& m1, const Magnet& m2) {
             V2 dir = m2.shape.getPosition() - m1.shape.getPosition();
-            float dist = Math::VecLen(dir);
             float angleM1 = Math::DegToRad(Math::AngleFromBaseX(m1.shape.getRotation(), dir));
             float angleM2 = Math::DegToRad(Math::AngleFromBaseX(m2.shape.getRotation(), dir));
-
+            float dist = Math::VecLen(dir);
+            
+            /*/
             float fMagnitude = cos(angleM1) * cos(angleM2) / fmax(params.radius * params.radius * 4, (dist * dist));
             float fMax = 1 / (params.radius * params.radius * 4);
             
+            float c;
+
             fMagnitude < 0 ? fMagnitude -= params.fConst : fMagnitude += params.fConst;
             fMax < 0 ? fMax -= params.fConst : fMax += params.fConst;
+            */
+            //float fCoeff = fMagnitude / fMax;
 
-            float fCoeff = fMagnitude / fMax;
+            //float fCoeff2 = cos(angleM1) * cos(angleM2) / fmax(params.radius * params.radius * 4, (dist * dist)) * (params.radius * params.radius * 4);
+
+            float fCoeff = pow(cos(angleM1), 2) / fmax(pow(2 * params.radius, 2), pow(dist, 2)) * pow(2 * params.radius, 2);
 
             if (fCoeff > params.fCoefAttrLim) return 0;
             return fCoeff;
