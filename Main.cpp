@@ -4,13 +4,13 @@
 #include <SFML/System/Clock.hpp>
 #include <SFML/Window/Event.hpp>
 #include <vector>
-#include <iostream> //debug
 #include <cmath>
-
 #ifndef _USE_MATH_DEFINES
 #define _USE_MATH_DEFINES
 #endif
 #include <math.h> //M_PI
+
+#include <iostream>
 
 using V2 = sf::Vector2f;
 
@@ -96,45 +96,42 @@ namespace Math {
         return Math::GetAngleDeg(yDir, inVec);
     }
 
-    //returns angle(DEG) based on quadrant determined by args
-    float GetTrueAngle(float xAngle, float yAngle) {
-        if (xAngle <= 90) {
-            if (yAngle >= 90) { //270-360°
-                return -xAngle;
-            }
-            else { //0-90°
-                return xAngle;
-            }
-        }
-        else {
-            if (yAngle >= 90) { //180-270°
-                return -xAngle;
-            }
-            else { //90-180°
-                return xAngle;
-            }
-        }
-    }
-
     //returns angle(in DEG) from interval (-180,180) between inVec and vector(1,0)
     float TrueAngleFromBase(const V2& inVec, float deg) {
         float xAngle = AngleFromBaseX(deg, inVec);
         float yAngle = AngleFromBaseY(deg, inVec);
-        auto xx = AngleFromBaseX(deg, inVec);
-        return GetTrueAngle(xAngle, yAngle);
+        auto getTrueAngle = [&xAngle, &yAngle]() {
+            if (xAngle <= 90) {
+                if (yAngle >= 90) { //270-360°
+                    return -xAngle;
+                }
+                else { //0-90°
+                    return xAngle;
+                }
+            }
+            else {
+                if (yAngle >= 90) { //180-270°
+                    return -xAngle;
+                }
+                else { //90-180°
+                    return xAngle;
+                }
+            }
+        };
+        return getTrueAngle();
     }
 };
 
 struct Params {
     sf::Texture texture;
     float radius = 20;
-    int magCount = 2;
+    int magCount = 1;
 
-    float movCoef = 8.f; //max 2x*radius otherwise magnets will jump over each other
+    float movCoef = 8.f; //max 2x*radius otherwise magnets jump over each other
     float rotationCoef = 0.5f; //interval (0,1)
     float inertia = 0.1f; //how much energy should be conserved from previous movement
 
-    const float fConstBase = 0;// 0.000001f;
+    const float fConstBase = 0.000001f;
     float fConst = fConstBase; //artificially increases magnetic force coefficient, allows better magnet-like behavior
     float fConstMult = 10.f;
     float fCoefAttrLim = 0.8; //(0,1)
@@ -183,15 +180,15 @@ class Magnet {
             rotation = ((1 - params.inertia) * rotation + params.inertia * lastRotation) * params.rotationCoef;
         }
 
-        //In case of collision sticks magnets together
-        //mostly disables magnets ability to move after joining other magnet => non-magnetic behavior
         void ResolveMagCollision(Magnet& other) {
             if (!CollidesWith(other)) return;
             float dist = Math::VecLen(shape.getPosition() - other.shape.getPosition());
             float freeDist = dist - params.radius - other.params.radius;
+            //...
 
             float thisLen = Math::VecLen(movement);
             float otherLen = Math::VecLen(other.movement);
+
             if (thisLen == 0) {
                 other.movement = Math::SetLen(other.movement, freeDist);
                 return;
@@ -208,26 +205,24 @@ class Magnet {
             other.movement = Math::SetLen(other.movement, otherNewLen);
         }
 
-        //In case of collision sticks magnet to window
-        //simplified, doesnt exactly follow movement vector
         void ResolveWinCollision(sf::Vector2u winSz) {
             V2 pos = shape.getPosition();
             float radius = params.radius;
             float nextX = pos.x + movement.x;
             float nextY = pos.y + movement.y;
-            float comp;
-            if ((comp = nextX - radius) < params.menuWidth) { //menu on left side
-                movement.x -= comp - params.menuWidth;
-            }
-            if ((comp = nextX + radius) > winSz.x) {
-                movement.x -= comp - winSz.x;
-            }
-            if ((comp = nextY - radius) < 0) {
-                movement.y -= comp;
-            }
-            if ((comp = nextY + radius) > winSz.y) {
-                movement.y -= comp - winSz.y;
-            }
+            #define SIDE_COLLISION(cond, movReduc, compMov, otherMov, compCoord) \
+                if(cond){ \
+                    float newMovCoord = compMov - movReduc; \
+                    otherMov = otherMov * (newMovCoord-compCoord) / (compMov-compCoord); \
+                    compMov = newMovCoord; \
+                    nextX = pos.x + movement.x; \
+                    nextY = pos.y + movement.y; \
+                }
+            SIDE_COLLISION(nextX - radius < params.menuWidth, (float)(nextX - radius - params.menuWidth), movement.x, movement.y, pos.x);
+            SIDE_COLLISION(nextX + radius > winSz.x, (float)(nextX + radius - winSz.x), movement.x, movement.y, pos.x);
+            SIDE_COLLISION(nextY - radius < 0, (float)(nextY - radius), movement.y, movement.x, pos.y);
+            SIDE_COLLISION(nextY + radius > winSz.y, (float)(nextY + radius - winSz.y), movement.y, movement.x, pos.y);
+            #undef SIDE_COLLISION
         }
 
         //alters magnets rotation based on input args
@@ -309,7 +304,7 @@ class Simulation {
         void Step() {
             for (size_t i = 0; i < magnets.size(); ++i) {
                 for (size_t j = i + 1; j < magnets.size(); ++j) {
-                    ApplyMagForce(magnets[i], magnets[j]);
+                    CalcMagForce(magnets[i], magnets[j]);
                 }
                 magnets[i].ApplyCoeffs();
             }            
@@ -327,7 +322,7 @@ class Simulation {
         Params& params;
 
         //alters movement and rotation of both magnets
-        void ApplyMagForce(Magnet& m1, Magnet& m2) {
+        void CalcMagForce(Magnet& m1, Magnet& m2) {
             float fCoeff = GetForceCoeff(m1, m2);
             auto dpos1 = m2.shape.getPosition();
             auto dpos2 = m1.shape.getPosition();
@@ -371,19 +366,19 @@ class Simulation {
         void MoveMagnets() {
             for (size_t i = 0; i < magnets.size(); ++i)
             {
-                magnets[i].ResolveWinCollision(window.getSize());
                 //magnets[j] - magnets which could collide with magnets[i] - could be optimized(QuadTree)
                 for (size_t j = 0; j < magnets.size(); j++) {
                     if (i == j) continue;
                     magnets[i].ResolveMagCollision(magnets[j]);
                 }
+                magnets[i].ResolveWinCollision(window.getSize());
 
                 magnets[i].Move();
             }
         }
 };
 
-void ShowMenu(const sf::Window& win, Params& params, Simulation& sim) {
+void ShowMenu(const sf::RenderWindow& win, Params& params, Simulation& sim) {
     auto menuWidth = params.menuWidth;
     ImGui::Begin("Main Menu");
     ImGui::SetWindowSize(ImVec2(menuWidth, static_cast<float>(win.getSize().y)));
@@ -416,7 +411,6 @@ void ShowMenu(const sf::Window& win, Params& params, Simulation& sim) {
     ImGui::SliderFloat("force const", &params.fConstMult, 1, 200);
     params.fConst = params.fConstBase * params.fConstMult;
     ImGui::SliderFloat("attract lim", &params.fCoefAttrLim, 0, 1);
-
     ImGui::End();
 }
 
@@ -428,7 +422,6 @@ int main() {
                             static_cast<size_t>(fullscreen.height * winScale)),
                             "Magnet Simulation", sf::Style::Close);
     window.setVerticalSyncEnabled(true);
-    //window.setFramerateLimit(20); //debug
     ImGui::SFML::Init(window);
 
     Params params;
