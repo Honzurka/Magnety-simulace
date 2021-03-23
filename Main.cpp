@@ -1,11 +1,11 @@
-#include "imgui.h" // necessary for ImGui::*, imgui-SFML.h doesn't include imgui.h
-#include "imgui-SFML.h" // for ImGui::SFML::* functions and SFML-specific overloads
+#include <imgui.h> // necessary for ImGui::*, imgui-SFML.h doesn't include imgui.h
+#include <imgui-SFML.h> // for ImGui::SFML::* functions and SFML-specific overloads
 #include <SFML/Graphics.hpp>
 #include <SFML/System/Clock.hpp>
 #include <SFML/Window/Event.hpp>
 #include <vector>
 #include <iostream> //debug
-
+#include <cmath>
 
 class Math {
     public:
