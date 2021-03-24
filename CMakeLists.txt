@@ -1,11 +1,11 @@
-
-
 cmake_minimum_required(VERSION 3.1)
 
 project(magnety
   LANGUAGES CXX
   VERSION 0.1
 )
+
+add_compile_options(-std=c++17 -Wall)
 
 find_library(SS sfml-system)
 find_library(SG sfml-graphics)

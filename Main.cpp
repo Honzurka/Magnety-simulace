@@ -123,7 +123,7 @@ namespace Math {
 struct Params {
     sf::Texture texture;
     float radius = 20;
-    int magCount = 2;
+    int magCount = 6;
 
     float movCoef = 8.f; //max 2x*radius otherwise magnets jump over each other
     float rotationCoef = 0.5f; //interval (0,1)
@@ -409,6 +409,7 @@ void ShowMenu(const sf::RenderWindow& win, Params& params, Simulation& sim) {
     ImGui::SliderFloat("movCoef", &params.movCoef, 0.1f, fmin(params.radius * 1.99f, 1.0f/params.inertia));
     ImGui::SliderFloat("rotationCoef", &params.rotationCoef, 0, 1);
     ImGui::SliderFloat("inertia", &params.inertia, 0, 1);
+    params.movCoef = fmin(params.movCoef, 1.0f/params.inertia);
     ImGui::SliderFloat("force const", &params.fConstMult, 1, 200);
     params.fConst = params.fConstBase * params.fConstMult;
     ImGui::SliderFloat("attract lim", &params.fCoefAttrLim, 0, 1);
@@ -422,7 +423,8 @@ int main() {
     sf::RenderWindow window(sf::VideoMode(static_cast<size_t>(fullscreen.width * winScale),
                             static_cast<size_t>(fullscreen.height * winScale)),
                             "Magnet Simulation", sf::Style::Close);
-    window.setVerticalSyncEnabled(true);
+    //window.setVerticalSyncEnabled(true);
+    window.setFramerateLimit(60);
     ImGui::SFML::Init(window);
 
     Params params;
