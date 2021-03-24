@@ -13,7 +13,7 @@
 using V2 = sf::Vector2f;
 
 namespace Math {
-    const float pi = M_PI;
+    const float pi = static_cast<float>(M_PI);
     int Random(int from, int to) {
         int r = rand();
         return r % (to-from) + from;
@@ -132,7 +132,7 @@ struct Params {
     const float fConstBase = 0.000001f;
     float fConst = fConstBase; //artificially increases magnetic force coefficient, allows better magnet-like behavior
     float fConstMult = 10.f;
-    float fCoefAttrLim = 0.8; //(0,1)
+    float fCoefAttrLim = 0.8f; //(0,1)
 
     bool isRunning = true;
     const int menuWidth = 200;
@@ -216,10 +216,10 @@ class Magnet {
                     nextX = pos.x + movement.x; \
                     nextY = pos.y + movement.y; \
                 }
-            SIDE_COLLISION(nextX - radius < params.menuWidth, (float)(nextX - radius - params.menuWidth), movement.x, movement.y, pos.x);
-            SIDE_COLLISION(nextX + radius > winSz.x, (float)(nextX + radius - winSz.x), movement.x, movement.y, pos.x);
-            SIDE_COLLISION(nextY - radius < 0, (float)(nextY - radius), movement.y, movement.x, pos.y);
-            SIDE_COLLISION(nextY + radius > winSz.y, (float)(nextY + radius - winSz.y), movement.y, movement.x, pos.y);
+            SIDE_COLLISION(nextX - radius < params.menuWidth, (nextX - radius - params.menuWidth), movement.x, movement.y, pos.x);
+            SIDE_COLLISION(nextX + radius > winSz.x, (nextX + radius - winSz.x), movement.x, movement.y, pos.x);
+            SIDE_COLLISION(nextY - radius < 0, (nextY - radius), movement.y, movement.x, pos.y);
+            SIDE_COLLISION(nextY + radius > winSz.y, (nextY + radius - winSz.y), movement.y, movement.x, pos.y);
             #undef SIDE_COLLISION
         }
 
@@ -305,7 +305,7 @@ class Simulation {
         std::pair<Magnet,bool> SpawnMagnet(size_t stepLim = 100) {
             auto [x, y] = GetRandomCoords();
             size_t deg = rand() % 360;
-            Magnet m(params.texture, sf::Vector3<size_t>(x, y, deg), params);
+            Magnet m(params.texture, sf::Vector3<size_t>(static_cast<size_t>(x), static_cast<size_t>(y), deg), params);
             
             size_t step = 0;
             bool collides = true;
@@ -355,8 +355,8 @@ class Simulation {
             float angleM2 = Math::DegToRad(Math::AngleFromBaseX(m2.shape.getRotation(), dir));
             float dist = Math::VecLen(dir);
             
-            float fMagnitude = cos(angleM1) * cos(angleM2) / fmax(pow(2 * params.radius, 2), pow(dist, 2));
-            float fMax = 1 / pow(2 * params.radius, 2);
+            float fMagnitude = cos(angleM1) * cos(angleM2) / fmax(pow(2.0f * params.radius, 2.0f), pow(dist, 2.0f));
+            float fMax = 1.f / pow(2.0f * params.radius, 2.0f);
             fMagnitude < 0 ? fMagnitude -= params.fConst : fMagnitude += params.fConst;
             fMax += params.fConst;
 
@@ -382,23 +382,23 @@ class Simulation {
 void ShowMenu(const sf::RenderWindow& win, Params& params, Simulation& sim) {
     auto menuWidth = params.menuWidth;
     ImGui::Begin("Main Menu");
-    ImGui::SetWindowSize(ImVec2(menuWidth, static_cast<float>(win.getSize().y)));
+    ImGui::SetWindowSize(ImVec2(static_cast<float>(menuWidth), static_cast<float>(win.getSize().y)));
     ImGui::SetWindowPos(ImVec2(0, 0));
     if (params.isRunning) {
-        if (ImGui::Button("STOP", ImVec2(menuWidth*0.9, 20))) {
+        if (ImGui::Button("STOP", ImVec2(menuWidth*0.9f, 20))) {
             params.isRunning = false;
         }
     }
     else {
-        if (ImGui::Button("START", ImVec2(menuWidth*0.9,20))) {
+        if (ImGui::Button("START", ImVec2(menuWidth*0.9f,20))) {
             params.isRunning = true;
         }
     }
-    if(ImGui::Button("RESET", ImVec2(menuWidth*0.9, 20))) {
+    if(ImGui::Button("RESET", ImVec2(menuWidth*0.9f, 20))) {
         sim.Generate();
     }
 
-    ImGui::PushItemWidth(menuWidth / 2.5);
+    ImGui::PushItemWidth(menuWidth / 2.5f);
     ImGui::Text("");
     ImGui::Text("Visual - requires reset");
     ImGui::SliderFloat("radius", &params.radius, 5, 100);
