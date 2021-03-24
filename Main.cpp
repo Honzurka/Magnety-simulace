@@ -10,8 +10,6 @@
 #endif
 #include <math.h> //M_PI
 
-#include <iostream>
-
 using V2 = sf::Vector2f;
 
 namespace Math {
@@ -127,7 +125,7 @@ struct Params {
     float radius = 20;
     int magCount = 2;
 
-    float movCoef = 0;//--------------------- 8.f; //max 2x*radius otherwise magnets jump over each other
+    float movCoef = 8.f; //max 2x*radius otherwise magnets jump over each other
     float rotationCoef = 0.5f; //interval (0,1)
     float inertia = 0.1f; //how much energy should be conserved from previous movement
 
@@ -266,12 +264,6 @@ class Simulation {
         //seed - for random generator
         void Generate(size_t seed = time(0)) {
             magnets.clear();
-            Magnet m(params.texture, sf::Vector3<size_t>(400, 100, 50), params);
-            magnets.push_back(m);
-            Magnet m1(params.texture, sf::Vector3<size_t>(600, 100, 180), params);
-            magnets.push_back(m1);
-
-            /*/
             srand(seed);
             while (magnets.size() != params.magCount) {
                 auto [m, spawned] = SpawnMagnet();
@@ -279,7 +271,6 @@ class Simulation {
                     magnets.push_back(m);
                 }
             }
-            /**/
         }
 
         void Step() {
@@ -364,21 +355,12 @@ class Simulation {
             float angleM2 = Math::DegToRad(Math::AngleFromBaseX(m2.shape.getRotation(), dir));
             float dist = Math::VecLen(dir);
             
-            /*/
-            float fMagnitude = cos(angleM1) * cos(angleM2) / fmax(params.radius * params.radius * 4, (dist * dist));
-            float fMax = 1 / (params.radius * params.radius * 4);
-            
-            float c;
-
+            float fMagnitude = cos(angleM1) * cos(angleM2) / fmax(pow(2 * params.radius, 2), pow(dist, 2));
+            float fMax = 1 / pow(2 * params.radius, 2);
             fMagnitude < 0 ? fMagnitude -= params.fConst : fMagnitude += params.fConst;
-            fMax < 0 ? fMax -= params.fConst : fMax += params.fConst;
-            */
-            //float fCoeff = fMagnitude / fMax;
+            fMax += params.fConst;
 
-            //float fCoeff2 = cos(angleM1) * cos(angleM2) / fmax(params.radius * params.radius * 4, (dist * dist)) * (params.radius * params.radius * 4);
-
-            float fCoeff = pow(cos(angleM1), 2) / fmax(pow(2 * params.radius, 2), pow(dist, 2)) * pow(2 * params.radius, 2);
-
+            float fCoeff = fMagnitude / fMax;
             if (fCoeff > params.fCoefAttrLim) return 0;
             return fCoeff;
         }
@@ -392,7 +374,6 @@ class Simulation {
                     magnets[i].ResolveMagCollision(magnets[j]);
                 }
                 magnets[i].ResolveWinCollision(window.getSize());
-
                 magnets[i].Move();
             }
         }
