@@ -30,19 +30,15 @@ Require resetting simulation to have effect.
 - `attract lim` - When should be attraction force of nearby magnets ignored. 1 = never, 0 = always.
 
 # Programmer Documentation
-> FPS is limited to `60` in `main()`.
-> 
-> In each frame `sim.Step()` is called.
-> 
->> Step Computes magnets movement and rotation by calling `AlterForces()` on each pair.
-> 
->>> Attract/repel rotation is computed separatedly in `RotateAttract`, `RotateRepel`.
->
->> Coefficients (`inertia`, `movCoef`, `rotationCoef`) are then applied on computed forces by calling `ApplyCoeffs()`.
-> 
->> Magnets are moved by `MoveMagnets()`.
-> 
->>> Handles collisions by propotionally decreasing movement vector in `ResolveMagCollision`, `ResolveWinCollisionA` and finally moves magnets.
+FPS is limited to `60` in `main()`.
+
+In each frame `sim.Step()` is called.
+
+* Step Computes magnets movement and rotation by calling `AlterForces()` on each pair. 
+    * Attract/repel rotation is computed separatedly in `RotateAttract`, `RotateRepel`.
+* Coefficients (`inertia`, `movCoef`, `rotationCoef`) are then applied on computed forces by calling `ApplyCoeffs()`. 
+* Magnets are moved by `MoveMagnets()`.
+    * Handles collisions by propotionally decreasing movement vector in `ResolveMagCollision`, `ResolveWinCollisionA` and finally moves magnets.
 
 
 
