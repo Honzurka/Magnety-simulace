@@ -142,6 +142,16 @@ struct Params {
             throw "Unable to load texture from file";
         }
     }
+
+    Params& operator=(const Params& other) {
+        radius = other.radius;
+        magCount = other.magCount;
+        movCoef = other.movCoef;
+        rotationCoef = other.rotationCoef;
+        inertia = other.inertia;
+        fConstMult = other.fConstMult;
+        fCoefAttrLim = other.fCoefAttrLim;
+    }
 };
 
 class Magnet {
@@ -254,6 +264,17 @@ class Magnet {
 };
 
 class Simulation {
+    class SimulationMemento {
+    private:
+        friend Simulation;
+        Params params;
+
+    public:
+        SimulationMemento(const Simulation* s) {
+            params = s->params;
+        }
+    };
+
     public:
         Simulation() = delete;
         Simulation(sf::RenderWindow& win, Params& params) : window(win),params(params) {
@@ -273,6 +294,14 @@ class Simulation {
             }
         }
 
+        SimulationMemento Save() {
+            return SimulationMemento(this);
+        }
+
+        void Restore(SimulationMemento& memento) {
+            params = memento.params;
+        }
+
         void Step() {
             for (size_t i = 0; i < magnets.size(); ++i) {
                 for (size_t j = i + 1; j < magnets.size(); ++j) {
@@ -288,6 +317,7 @@ class Simulation {
                 window.draw(m.shape);
             }
         }
+
     private:
         sf::RenderWindow& window;
         std::vector<Magnet> magnets;
