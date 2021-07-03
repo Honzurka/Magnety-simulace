@@ -9,6 +9,7 @@
 #define _USE_MATH_DEFINES
 #endif
 #include <math.h> //M_PI
+#include <sstream>
 
 using V2 = sf::Vector2f;
 
@@ -151,6 +152,8 @@ struct Params {
         inertia = other.inertia;
         fConstMult = other.fConstMult;
         fCoefAttrLim = other.fCoefAttrLim;
+
+        return *this;
     }
 };
 
@@ -264,18 +267,18 @@ class Magnet {
 };
 
 class Simulation {
-    class SimulationMemento {
-    private:
-        friend Simulation;
-        Params params;
-
     public:
-        SimulationMemento(const Simulation* s) {
-            params = s->params;
-        }
-    };
+        class SimulationMemento {
+        private:
+            friend Simulation;
+            Params params;
 
-    public:
+        public:
+            SimulationMemento(const Simulation* s) {
+                params = s->params;
+            }
+        };
+
         Simulation() = delete;
         Simulation(sf::RenderWindow& win, Params& params) : window(win),params(params) {
             Generate();
@@ -295,7 +298,7 @@ class Simulation {
         }
 
         SimulationMemento Save() {
-            return SimulationMemento(this);
+            return SimulationMemento(this); 
         }
 
         void Restore(SimulationMemento& memento) {
@@ -409,11 +412,36 @@ class Simulation {
         }
 };
 
-void ShowMenu(const sf::RenderWindow& win, Params& params, Simulation& sim) {
+class SavedMementos { //careTaker
+    public:
+        SavedMementos(Simulation& simulation) : sim(simulation) { }
+
+        void AddMemento() {
+            mementos.push_back(sim.Save());
+
+        }
+
+        void SetMemento(size_t idx) {
+            if (idx < mementos.size()) {
+                sim.Restore(mementos[idx]);
+            }
+        }
+
+        size_t MementoCount() {
+            return mementos.size();
+        }
+
+    private:
+        Simulation& sim; //originator
+        std::vector<Simulation::SimulationMemento> mementos;
+};
+
+void ShowMenu(const sf::RenderWindow& win, Params& params, Simulation& sim, SavedMementos& careTaker) {
     auto menuWidth = params.menuWidth;
     ImGui::Begin("Main Menu");
     ImGui::SetWindowSize(ImVec2(static_cast<float>(menuWidth), static_cast<float>(win.getSize().y)));
     ImGui::SetWindowPos(ImVec2(0, 0));
+
     if (params.isRunning) {
         if (ImGui::Button("STOP", ImVec2(menuWidth*0.9f, 20))) {
             params.isRunning = false;
@@ -443,6 +471,34 @@ void ShowMenu(const sf::RenderWindow& win, Params& params, Simulation& sim) {
     ImGui::SliderFloat("force const", &params.fConstMult, 1, 200);
     params.fConst = params.fConstBase * params.fConstMult;
     ImGui::SliderFloat("attract lim", &params.fCoefAttrLim, 0, 1);
+
+    ImGui::Text("");
+
+    static int selected_idx = 0;
+    if (ImGui::BeginListBox("", ImVec2(menuWidth * 0.8f, 100)))
+    {
+        for (size_t i = 0; i < careTaker.MementoCount(); ++i) {
+            std::ostringstream ss;
+            ss << "Saved state: " << i;
+            const bool is_selected = selected_idx == i;
+            if (ImGui::Selectable(ss.str().c_str(), is_selected)) {
+                selected_idx = i;
+            }
+            if (is_selected) {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        ImGui::EndListBox();
+    }
+
+    if (ImGui::Button("Save", ImVec2(menuWidth * 0.4f, 20))) {
+        careTaker.AddMemento();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Load", ImVec2(menuWidth * 0.4f, 20))) {
+        careTaker.SetMemento(selected_idx);
+    }
+
     ImGui::End();
 }
 
@@ -462,6 +518,7 @@ int main() {
 
     sf::Clock deltaClock;
     Simulation sim(window, params);
+    SavedMementos careTaker(sim);
     while (window.isOpen()) {
         sf::Event event;
         while (window.pollEvent(event)) {
@@ -471,7 +528,7 @@ int main() {
             }
         }
         ImGui::SFML::Update(window, deltaClock.restart());
-        ShowMenu(window, params, sim);
+        ShowMenu(window, params, sim, careTaker);
 
         if (params.isRunning) {
             sim.Step();
